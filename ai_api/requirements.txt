@@ -1,0 +1,10 @@
+flask
+flask-cors
+requests
+numpy
+pandas
+torch
+scikit-learn
+scipy
+networkx
+dgl

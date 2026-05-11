@@ -1,0 +1,45 @@
+# Python virtual env
+ai_api/.venv_real/
+ai_api/venv/
+ai_api/.venv/
+ai_api/AMDGT/venv_original/
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# AI model files
+*.pt
+*.pth
+*.pkl
+*.h5
+*.onnx
+
+# AMDGT heavy folders
+ai_api/AMDGT/Result/
+ai_api/AMDGT/result/
+ai_api/AMDGT/checkpoints/
+ai_api/AMDGT/logs/
+
+# Dataset nếu quá nặng
+ai_api/AMDGT/data/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Env / secret
+.env
+.env.local
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
