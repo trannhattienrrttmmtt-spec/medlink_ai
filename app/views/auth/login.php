@@ -1,9 +1,10 @@
-<?php if (session_status() === PHP_SESSION_NONE) session_start(); function e($v){ return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); } ?>
+<?php if (session_status() === PHP_SESSION_NONE) session_start(); if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); } } ?>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Đăng nhập - MedLink AI</title>
+    <script>document.documentElement.setAttribute('data-theme',localStorage.getItem('ml-theme')||'light')</script>
     <link rel="stylesheet" href="assets/css/medlink-dashboard.css">
 </head>
 <body class="ml-auth-body">
@@ -17,7 +18,7 @@
         <button class="ml-btn primary full" type="submit">Đăng nhập</button>
     </form>
     <p class="ml-footer-note">Chưa có tài khoản? <a href="index.php?action=register">Đăng ký</a></p>
-    <p class="ml-footer-note">Mặc định nếu import database.sql: <b>admin / 123456</b></p>
+    <p class="ml-footer-note"
 </div>
 </body>
 </html>

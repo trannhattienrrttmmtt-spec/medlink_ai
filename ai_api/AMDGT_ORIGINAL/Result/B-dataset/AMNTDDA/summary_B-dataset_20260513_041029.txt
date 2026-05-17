@@ -1,0 +1,11 @@
+================================================================================
+AMDGT ORIGINAL TRAIN WITH BEST FOLD + CSV
+Dataset        : B-dataset
+Device         : cuda
+CUDA available : True
+GPU            : NVIDIA GeForce RTX 3050 Laptop GPU
+Result dir     : Result/B-dataset/AMNTDDA/
+================================================================================
+
+Fold 0
+Epoch		Time		AUC		AUPR		Accuracy		Precision		Recall		F1-score		Mcc

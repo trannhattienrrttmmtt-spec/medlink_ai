@@ -1,14 +1,28 @@
-import os
+﻿import os
 import sys
+import importlib
+import importlib.util
 import torch
 import numpy as np
 import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-AMDGT_DIR = os.path.join(BASE_DIR, "AMDGT")
+AMDGT_DIR = BASE_DIR
 
-if AMDGT_DIR not in sys.path:
-    sys.path.append(AMDGT_DIR)
+# === Force import từ AMDGT_ORIGINAL/model/ thay vì AMDGT/model/ ===
+# Xóa cached modules "model.*" có thể đã import từ AMDGT/
+_to_remove = [k for k in sys.modules if k == "model" or k.startswith("model.")]
+for k in _to_remove:
+    del sys.modules[k]
+
+# Cũng xóa data_preprocess nếu cached
+if "data_preprocess" in sys.modules:
+    del sys.modules["data_preprocess"]
+
+# Đưa AMDGT_ORIGINAL lên đầu sys.path
+if AMDGT_DIR in sys.path:
+    sys.path.remove(AMDGT_DIR)
+sys.path.insert(0, AMDGT_DIR)
 
 from model.AMNTDDA import AMNTDDA
 from data_preprocess import (
@@ -18,6 +32,15 @@ from data_preprocess import (
     dgl_similarity_graph,
     dgl_heterograph
 )
+
+# Verify đúng file
+assert "AMDGT_ORIGINAL" in AMNTDDA.__module__ or "AMDGT_ORIGINAL" in str(
+    sys.modules.get("model.AMNTDDA", object).__dict__.get("__file__", "")
+) or os.path.join("AMDGT_ORIGINAL", "model") in str(
+    getattr(sys.modules.get("model.AMNTDDA"), "__file__", "")
+), f"AMNTDDA imported from wrong location: {getattr(sys.modules.get('model.AMNTDDA'), '__file__', 'unknown')}"
+
+print(f"[AMDGT_ORIGINAL] AMNTDDA loaded from: {sys.modules['model.AMNTDDA'].__file__}")
 
 
 def standardize(x: torch.Tensor) -> torch.Tensor:
@@ -35,7 +58,9 @@ def normalize_top_scores(probs, top_indices):
     if max_v - min_v < 1e-8:
         return np.ones_like(top_values) * 0.75
 
-    return 0.5 + 0.5 * ((top_values - min_v) / (max_v - min_v))
+    # Map vào range [0.40, 0.97] — spread rộng hơn
+    normalized = (top_values - min_v) / (max_v - min_v)
+    return 0.40 + 0.57 * normalized
 
 
 class AMDGTPredictor:
@@ -66,6 +91,7 @@ class AMDGTPredictor:
         self._prepare_data()
         self._load_names()
         self._load_models()
+        self._cache_graphs()
 
     def _build_args(self):
         class Args:
@@ -109,27 +135,30 @@ class AMDGTPredictor:
 
         if self.dataset == "B-dataset":
             args.neighbor = 3
-            args.gt_out_dim = 512
+            args.gt_out_dim = 200
+            args.hgt_in_dim = 64
             args.hgt_out_dim = 64
-            args.hgt_head_dim = 64
+            args.hgt_head_dim = 25  # hgt_dgl_last output per head, total = 25*8 = 200 = gt_out_dim
 
         elif self.dataset == "C-dataset":
             args.neighbor = 5
-            args.gt_out_dim = 256
+            args.gt_out_dim = 200
+            args.hgt_in_dim = 64
             args.hgt_out_dim = 64
-            args.hgt_head_dim = 32
+            args.hgt_head_dim = 25
 
         elif self.dataset == "F-dataset":
             args.neighbor = 5
-            args.gt_out_dim = 256
+            args.gt_out_dim = 200
+            args.hgt_in_dim = 64
             args.hgt_out_dim = 64
-            args.hgt_head_dim = 32
+            args.hgt_head_dim = 25
 
         else:
             raise ValueError(f"Dataset không hợp lệ: {self.dataset}")
 
-        args.data_dir = os.path.join(self.amdgt_dir, "data", args.dataset) + os.sep
-        args.result_dir = os.path.join(self.amdgt_dir, "Result", args.dataset) + os.sep
+        args.data_dir = os.path.join(BASE_DIR, "data", args.dataset) + os.sep
+        args.result_dir = os.path.join(BASE_DIR, "Result", args.dataset) + os.sep
         args.device = self.device
 
         return args
@@ -162,11 +191,8 @@ class AMDGTPredictor:
         self.args.disease_in_dim = self.disease_feature.shape[1]
         self.args.protein_in_dim = self.protein_feature.shape[1]
 
-        # QUAN TRỌNG:
-        # AMNTDDA.py có:
-        # self.drug_linear = nn.Linear(301, args.hgt_in_dim)
-        # nên hgt_in_dim phải là 64.
-        self.args.hgt_in_dim = self.args.hgt_out_dim
+        # hgt_in_dim = 64 (set trong _build_args), khớp với checkpoint
+        # drug_linear: 300->64, protein_linear: 320->64, disease: 64 (no linear)
 
         print(f"[{self.dataset}] device = {self.device}")
         print(f"[{self.dataset}] topology_features.py = OFF")
@@ -249,6 +275,24 @@ class AMDGTPredictor:
             )
 
         print(f"[{self.dataset}] total loaded models = {len(self.models)}")
+
+    def _cache_graphs(self):
+        self._cached_graphs = {}
+        fold_index = 0
+        if fold_index < len(self.data["X_train"]):
+            x_train = self.data["X_train"][fold_index]
+            drdipr_graph, _ = dgl_heterograph(self.data, x_train, self.args)
+            self._cached_graphs[fold_index] = drdipr_graph.to(self.device)
+        print(f"[{self.dataset}] cached graphs for {len(self._cached_graphs)} folds")
+
+    def _get_graph(self, fold_index=0):
+        if fold_index in self._cached_graphs:
+            return self._cached_graphs[fold_index]
+        x_train = self.data["X_train"][fold_index]
+        drdipr_graph, _ = dgl_heterograph(self.data, x_train, self.args)
+        drdipr_graph = drdipr_graph.to(self.device)
+        self._cached_graphs[fold_index] = drdipr_graph
+        return drdipr_graph
 
     def _ensemble_predict_scores(self, drdipr_graph, x_input, temperature=2.0):
         all_probs = []

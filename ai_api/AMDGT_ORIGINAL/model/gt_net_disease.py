@@ -1,15 +1,8 @@
-import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import dgl
 
-"""
-    Graph Transformer with edge features
-    
-"""
-import dgl
 from model.graph_transformer_layer import GraphTransformerLayer
 
 
@@ -21,29 +14,51 @@ class GraphTransformer(nn.Module):
         self.layer_norm = True
         self.batch_norm = False
         self.residual = True
+
         self.linear_h = nn.Linear(node_dim, hidden_dim)
-        # self.in_feat_dropout = nn.Dropout(in_feat_dropout)
-        self.layers = nn.ModuleList([GraphTransformerLayer(hidden_dim, hidden_dim, n_heads, dropout, self.layer_norm,
-                                                           self.batch_norm, self.residual)
-                                     for _ in range(n_layers - 1)])
+
+        self.layers = nn.ModuleList([
+            GraphTransformerLayer(
+                hidden_dim,
+                hidden_dim,
+                n_heads,
+                dropout,
+                self.layer_norm,
+                self.batch_norm,
+                self.residual
+            )
+            for _ in range(n_layers - 1)
+        ])
+
         self.layers.append(
-            GraphTransformerLayer(hidden_dim, out_dim, n_heads, dropout, self.layer_norm, self.batch_norm,
-                                  self.residual))
+            GraphTransformerLayer(
+                hidden_dim,
+                out_dim,
+                n_heads,
+                dropout,
+                self.layer_norm,
+                self.batch_norm,
+                self.residual
+            )
+        )
 
     def forward(self, g):
-        # input embedding
-        g = g.to(self.device)
-        h = g.ndata['dis'].float().to(self.device)
+        # Lấy device thật của model sau khi model.to(cuda/cpu)
+        device = self.linear_h.weight.device
+
+        # Đưa graph và node feature sang đúng device
+        g = g.to(device)
+
+        if "dis" not in g.ndata:
+            raise KeyError("gt_net_disease.py: Không tìm thấy g.ndata['dis']")
+
+        h = g.ndata["dis"].float().to(device)
 
         h = self.linear_h(h)
-        # h = self.in_feat_dropout(h)
 
-        # convnets
         for conv in self.layers:
-            h= conv(g, h)
+            h = conv(g, h)
 
-        g.ndata['h'] = h
-
-        # h = dgl.mean_nodes(g, 'h')
+        g.ndata["h"] = h
 
         return h

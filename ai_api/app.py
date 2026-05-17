@@ -1,883 +1,1515 @@
+# -*- coding: utf-8 -*-
+"""
+MedLink AI Flask API
+
+Routes:
+- GET  /health
+- GET  /drugs
+- GET  /diseases
+- GET  /drug_options
+- GET  /disease_options
+- POST /predict
+- POST /predict_compare
+- POST /generate_drug
+- GET/POST /reload
+"""
+
+import sys
+import random
+import traceback
+from pathlib import Path
+
+import torch
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from predictor import AMDGTPredictor
-from sentence_transformers import SentenceTransformer, util
-from symptom_map import SYMPTOM_MAP
 
-import os
-import csv
-import unicodedata
-import re
-import torch
 
+# =========================================================
+# CONFIG
+# =========================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+AMDGT_DIR = BASE_DIR / "AMDGT"
+AMDGT_ORIGINAL_DIR = BASE_DIR / "AMDGT_ORIGINAL"
+DATA_DIR = AMDGT_DIR / "data"
+
+DATASETS = ["B-dataset", "C-dataset", "F-dataset"]
+
+DEFAULT_DATASET = "B-dataset"
+DEFAULT_TOP_K = 10
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# =========================================================
+# FLASK
+# =========================================================
 
 app = Flask(__name__)
 CORS(app)
 
-# =========================
-# Dataset config
-# =========================
-DATASETS = ["B-dataset", "C-dataset", "F-dataset"]
 
-# Cache predictor theo dataset.
-# Dataset nào web chọn thì mới load dataset đó.
-# Load xong rồi thì lần sau dùng lại, không load lại.
-predictors = {}
+print("=" * 70)
+print("MEDLINK AI API STARTING")
+print("BASE_DIR:", BASE_DIR)
+print("PYTHON:", sys.executable)
+print("TORCH:", torch.__version__)
+print("CUDA AVAILABLE:", torch.cuda.is_available())
+print("TORCH CUDA:", torch.version.cuda)
+print("DEVICE:", DEVICE)
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
+print("=" * 70)
 
 
-def get_predictor(dataset):
+# =========================================================
+# HELPER
+# =========================================================
+
+def safe_int(value, default=10, min_value=1, max_value=100):
+    try:
+        value = int(value)
+        if value < min_value:
+            return min_value
+        if value > max_value:
+            return max_value
+        return value
+    except Exception:
+        return default
+
+
+def normalize_text(s):
+    if s is None:
+        return ""
+    return str(s).strip()
+
+
+def normalize_key(s):
+    return normalize_text(s).lower()
+
+
+def clean_dataset(dataset):
+    dataset = normalize_text(dataset)
     if dataset not in DATASETS:
-        raise ValueError(f"Dataset không hợp lệ: {dataset}")
-
-    if dataset not in predictors:
-        print("==============================")
-        print(f"Loading predictor: {dataset}")
-        predictors[dataset] = AMDGTPredictor(dataset=dataset)
-        print(f"Loaded OK: {dataset}")
-
-    return predictors[dataset]
-
-
-# =========================
-# Helper functions
-# =========================
-def normalize_key(name):
-    return str(name).strip().lower()
-
-
-def normalize_text(text):
-    text = str(text).strip().lower()
-    text = unicodedata.normalize("NFD", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
-    text = text.replace("đ", "d")
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
-def is_code_name(name):
-    if not name:
-        return False
-
-    t = str(name).strip().upper()
-
-    return (
-        t.startswith("DB")
-        or t.startswith("D")
-        or t.startswith("DISEASE_")
-        or t.startswith("DRUG_")
-    )
+        return DEFAULT_DATASET
+    return dataset
 
 
 def read_csv_rows(path):
+    import csv
+
     rows = []
 
-    if not os.path.exists(path):
+    if not path or not Path(path).exists():
         return rows
 
-    with open(path, "r", encoding="utf-8-sig") as f:
-        reader = csv.reader(f)
-        for row in reader:
-            rows.append(row)
+    encodings = ["utf-8-sig", "utf-8", "latin1"]
+
+    for enc in encodings:
+        try:
+            with open(path, "r", encoding=enc, newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rows.append(row)
+            return rows
+        except Exception:
+            rows = []
 
     return rows
 
 
-def resolve_path(*parts):
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, *parts)
+def find_file_case_insensitive(folder, names):
+    folder = Path(folder)
+
+    if not folder.exists():
+        return None
+
+    files = {}
+    for p in folder.iterdir():
+        if p.is_file():
+            files[p.name.lower()] = p
+
+    for name in names:
+        found = files.get(name.lower())
+        if found:
+            return found
+
+    return None
 
 
-def get_smiles_map(dataset_name):
-    path = resolve_path("AMDGT", "data", dataset_name, "DrugInformation.csv")
-    rows = read_csv_rows(path)
-
-    if not rows:
-        return {}
-
-    header = [str(x).strip().lower() for x in rows[0]]
-    data_rows = rows[1:] if ("id" in header or "name" in header or "smiles" in header) else rows
-
-    id_col = header.index("id") if "id" in header else 0
-    name_col = header.index("name") if "name" in header else 1
-    smiles_col = header.index("smiles") if "smiles" in header else None
-
-    if smiles_col is None:
-        return {}
-
-    smiles_map = {}
-
-    synonym_map = {
-        "paracetamol": "acetaminophen",
-        "tylenol": "acetaminophen",
-        "aspirin": "acetylsalicylic acid",
-    }
-
-    for row in data_rows:
-        if not row:
-            continue
-
-        drug_id = str(row[id_col]).strip() if id_col < len(row) else ""
-        drug_name = str(row[name_col]).strip() if name_col < len(row) else ""
-        smiles = str(row[smiles_col]).strip() if smiles_col < len(row) else ""
-
-        if drug_id:
-            smiles_map[normalize_key(drug_id)] = smiles
-
-        if drug_name:
-            smiles_map[normalize_key(drug_name)] = smiles
-
-    for alias, real_name in synonym_map.items():
-        if real_name in smiles_map:
-            smiles_map[alias] = smiles_map[real_name]
-
-    return smiles_map
+def dataset_path(dataset):
+    dataset = clean_dataset(dataset)
+    return DATA_DIR / dataset
 
 
-def attach_smiles_to_results(results, dataset_name):
-    smiles_map = get_smiles_map(dataset_name)
+def get_drug_info_file(dataset):
+    dpath = dataset_path(dataset)
 
-    for item in results:
-        item["smiles"] = ""
+    return find_file_case_insensitive(
+        dpath,
+        [
+            "DrugInformation.csv",
+            "drugInformation.csv",
+            "drug_information.csv",
+            "Drug_Information.csv",
+        ],
+    )
 
-        search_keys = []
 
-        if item.get("name"):
-            search_keys.append(normalize_key(item["name"]))
+def get_allnode_file(dataset):
+    dpath = dataset_path(dataset)
 
-        if item.get("code"):
-            search_keys.append(normalize_key(item["code"]))
+    return find_file_case_insensitive(
+        dpath,
+        [
+            "Allnode.csv",
+            "AllNode.csv",
+            "allnode.csv",
+            "all_node.csv",
+        ],
+    )
 
-        for key in search_keys:
-            if key in smiles_map and smiles_map[key]:
-                item["smiles"] = smiles_map[key]
+
+# =========================================================
+# LOAD DRUG / DISEASE OPTIONS
+# =========================================================
+
+def load_drugs(dataset=DEFAULT_DATASET):
+    dataset = clean_dataset(dataset)
+
+    file_path = get_drug_info_file(dataset)
+    rows = read_csv_rows(file_path)
+
+    drugs = []
+    seen = set()
+
+    for row in rows:
+        keys = {str(k).lower(): k for k in row.keys()}
+
+        name = ""
+        drug_id = ""
+        smiles = ""
+
+        for c in [
+            "drugname",
+            "drug_name",
+            "name",
+            "drug",
+            "drugbankid",
+            "drugbank_id",
+        ]:
+            if c in keys and normalize_text(row.get(keys[c])):
+                name = normalize_text(row.get(keys[c]))
                 break
 
-    return results
+        for c in [
+            "drugbankid",
+            "drugbank_id",
+            "drug_id",
+            "id",
+        ]:
+            if c in keys and normalize_text(row.get(keys[c])):
+                drug_id = normalize_text(row.get(keys[c]))
+                break
 
+        for c in [
+            "smiles",
+            "canonical_smiles",
+            "canonicalsmiles",
+        ]:
+            if c in keys and normalize_text(row.get(keys[c])):
+                smiles = normalize_text(row.get(keys[c]))
+                break
 
-# =========================
-# Disease / symptom engine
-# =========================
-def find_protein_start_index(rows):
-    for i, row in enumerate(rows):
-        name = ""
+        if not name and drug_id:
+            name = drug_id
 
-        if len(row) > 1:
-            name = str(row[1]).strip()
-
-        if re.match(r"^9606\.ensp", name, re.IGNORECASE):
-            return i
-
-    return -1
-
-
-def load_disease_names_from_b_dataset():
-    allnode_path = resolve_path("AMDGT", "data", "B-dataset", "Allnode.csv")
-
-    if not os.path.exists(allnode_path):
-        allnode_path = resolve_path("AMDGT", "data", "B-dataset", "AllNode.csv")
-
-    disease_gip_path = resolve_path("AMDGT", "data", "B-dataset", "DiseaseGIP.csv")
-    drug_info_path = resolve_path("AMDGT", "data", "B-dataset", "DrugInformation.csv")
-
-    all_rows = read_csv_rows(allnode_path)
-    gip_rows = read_csv_rows(disease_gip_path)
-    drug_rows = read_csv_rows(drug_info_path)
-
-    if not all_rows or not gip_rows or not drug_rows:
-        return []
-
-    drug_count = len(drug_rows) - 1 if drug_rows else 0
-    disease_count = len(gip_rows)
-    protein_start = find_protein_start_index(all_rows)
-
-    if protein_start == -1:
-        disease_rows = all_rows[drug_count:drug_count + disease_count]
-    else:
-        disease_rows = all_rows[max(0, protein_start - disease_count):protein_start]
-
-    disease_names = []
-
-    for row in disease_rows:
-        if len(row) < 2:
+        if not name:
             continue
 
-        disease_name = str(row[1]).strip()
-
-        if disease_name:
-            disease_names.append(disease_name)
-
-    return disease_names
-
-
-def load_disease_vi_alias():
-    alias = {}
-    php_map_path = resolve_path("..", "app", "data", "disease_vi_map_598.php")
-
-    if not os.path.exists(php_map_path):
-        return alias
-
-    try:
-        with open(php_map_path, "r", encoding="utf-8") as f:
-            text = f.read()
-
-        pairs = re.findall(r"'([^']+)'\s*=>\s*'([^']*)'", text)
-
-        for en, vi in pairs:
-            alias[normalize_text(en)] = vi.strip()
-
-    except Exception as e:
-        print("Không parse được disease_vi_map_598.php:", e)
-
-    return alias
-
-
-EMBED_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-embedder = SentenceTransformer(EMBED_MODEL_NAME)
-
-DISEASE_NAMES = load_disease_names_from_b_dataset()
-DISEASE_VI_ALIAS = load_disease_vi_alias()
-
-SYMPTOM_HINTS = {
-    "arthritis": "dau khop, sung khop, cung khop",
-    "osteoarthritis": "dau khop, cung khop, kho cu dong",
-    "gout": "dau khop, sung do, dau nhuc",
-    "influenza": "sot, ho, dau hong, met moi",
-    "common cold": "ho, so mui, hat hoi",
-    "pharyngitis": "dau hong, kho nuot",
-    "tonsillitis": "dau hong, kho nuot, sot, amidan sung",
-    "pneumonia": "sot, ho, kho tho, dau nguc",
-    "bronchitis": "ho, dom, kho tho",
-    "asthma": "kho tho, tuc nguc, ho",
-    "gastritis": "dau bung, buon non, day hoi",
-    "diarrhea": "tieu chay, dau bung",
-    "migraine": "dau dau, buon non",
-    "headache": "dau dau, chong mat",
-    "hypertension": "dau dau, chong mat",
-    "diabetes": "khat nuoc, tieu nhieu",
-    "allergy": "ngua, phat ban",
-    "urinary tract infection": "tieu buot, tieu rat, dau bung duoi",
-    "dengue fever": "sot cao, dau dau, dau nhuc co the",
-}
-
-DISEASE_CORPUS = []
-
-for disease_name in DISEASE_NAMES:
-    key = normalize_text(disease_name)
-    vn_alias = DISEASE_VI_ALIAS.get(key, "")
-    symptom_hint = SYMPTOM_HINTS.get(key, "")
-
-    parts = [disease_name]
-
-    if vn_alias:
-        parts.append(f"Tên tiếng Việt: {vn_alias}")
-
-    if symptom_hint:
-        parts.append(f"Triệu chứng: {symptom_hint}")
-
-    parts.append("Đây là một bệnh")
-
-    DISEASE_CORPUS.append(". ".join(parts))
-
-DISEASE_EMBEDDINGS = (
-    embedder.encode(
-        DISEASE_CORPUS,
-        convert_to_tensor=True,
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
-    if DISEASE_CORPUS
-    else None
-)
-
-
-def symptom_rule_match(keyword):
-    keyword_norm = normalize_text(keyword)
-    matched = []
-
-    for symptom_key, diseases in SYMPTOM_MAP.items():
-        if symptom_key in keyword_norm:
-            for disease in diseases:
-                matched.append({
-                    "name": disease,
-                    "name_vi": DISEASE_VI_ALIAS.get(normalize_text(disease), disease),
-                    "score": 0.95,
-                    "matched_keywords": [symptom_key],
-                })
-
-    merged = {}
-
-    for item in matched:
-        name = item["name"]
-
-        if name not in merged:
-            merged[name] = item
-        else:
-            merged[name]["score"] = max(merged[name]["score"], item["score"])
-            merged[name]["matched_keywords"] = list(
-                set(merged[name]["matched_keywords"] + item["matched_keywords"])
-            )
-
-    return list(merged.values())
-
-
-def predict_from_symptoms(symptom_text, top_k=5):
-    if not symptom_text or not DISEASE_NAMES or DISEASE_EMBEDDINGS is None:
-        return []
-
-    query = f"Triệu chứng bệnh: {symptom_text}"
-
-    query_embedding = embedder.encode(
-        query,
-        convert_to_tensor=True,
-        normalize_embeddings=True,
-    )
-
-    scores = util.cos_sim(query_embedding, DISEASE_EMBEDDINGS)[0]
-    top_results = torch.topk(scores, k=min(20, len(DISEASE_NAMES)))
-
-    results = []
-    query_norm = normalize_text(symptom_text)
-
-    for idx, score in zip(top_results.indices.tolist(), top_results.values.tolist()):
-        disease_name = DISEASE_NAMES[idx]
-        key = normalize_text(disease_name)
-        name_vi = DISEASE_VI_ALIAS.get(key, disease_name)
-
-        boost = 0.0
-        hint = normalize_text(SYMPTOM_HINTS.get(key, ""))
-        matched_keywords = []
-
-        if hint:
-            for token in hint.split(","):
-                token = token.strip()
-
-                if token and token in query_norm:
-                    boost += 0.05
-                    matched_keywords.append(token)
-
-        final_score = float(score) + boost
-
-        results.append({
-            "name": disease_name,
-            "name_vi": name_vi,
-            "score": round(final_score, 4),
-            "matched_keywords": matched_keywords[:5],
-        })
-
-    results.sort(key=lambda x: x["score"], reverse=True)
-
-    return results[:top_k]
-
-
-def get_drug_suggestions_for_disease(disease_name, dataset_name, top_k=5):
-    predictor = get_predictor(dataset_name)
-
-    results = predictor.predict(
-        "disease",
-        disease_name,
-        top_k=top_k,
-    )
-
-    results = attach_smiles_to_results(results, dataset_name)
-
-    for item in results:
-        item["source"] = dataset_name
-        item["dataset"] = dataset_name
-
-    return results
-
-
-# =========================
-# Graph helpers
-# =========================
-def build_fallback_graph(input_type, keyword, results, dataset_name):
-    graph = {
-        "dataset": dataset_name,
-        "nodes": [],
-        "edges": [],
-    }
-
-    main_type = "drug" if input_type == "drug" else "disease"
-    child_type = "disease" if input_type == "drug" else "drug"
-
-    smiles_map = get_smiles_map(dataset_name)
-
-    main_id = "main"
-
-    graph["nodes"].append({
-        "id": main_id,
-        "label": keyword,
-        "type": main_type,
-        "score": None,
-        "smiles": smiles_map.get(normalize_key(keyword), "") if main_type == "drug" else "",
-    })
-
-    for i, item in enumerate(results[:5]):
-        node_id = f"n{i}"
-        node_label = item.get("name") or item.get("code") or f"Node {i + 1}"
-
-        graph["nodes"].append({
-            "id": node_id,
-            "label": node_label,
-            "type": child_type,
-            "score": item.get("score"),
-            "smiles": smiles_map.get(normalize_key(node_label), "") if child_type == "drug" else "",
-        })
-
-        if input_type == "drug":
-            graph["edges"].append({"from": main_id, "to": node_id})
-        else:
-            graph["edges"].append({"from": node_id, "to": main_id})
-
-    return graph
-
-
-def attach_smiles_to_graph(graph, dataset_name):
-    if not graph or "nodes" not in graph:
-        return graph
-
-    smiles_map = get_smiles_map(dataset_name)
-
-    for node in graph.get("nodes", []):
-        if node.get("type") == "drug":
-            key = normalize_key(node.get("label", ""))
-            node["smiles"] = node.get("smiles", "") or smiles_map.get(key, "")
-        else:
-            node["smiles"] = ""
-
-    return graph
-
-
-def build_symptom_graph(symptom_keyword, disease_results, drug_results):
-    graph = {
-        "dataset": "symptom-mode",
-        "nodes": [],
-        "edges": [],
-    }
-
-    graph["nodes"].append({
-        "id": "symptom_input",
-        "label": symptom_keyword,
-        "type": "symptom",
-        "score": None,
-        "smiles": "",
-    })
-
-    for i, item in enumerate(disease_results[:3]):
-        node_id = f"disease_{i}"
-
-        graph["nodes"].append({
-            "id": node_id,
-            "label": item.get("name_vi") or item.get("name") or f"Disease {i + 1}",
-            "type": "disease",
-            "score": item.get("score"),
-            "smiles": "",
-        })
-
-        graph["edges"].append({
-            "from": "symptom_input",
-            "to": node_id,
-        })
-
-    for i, item in enumerate(drug_results[:3]):
-        node_id = f"drug_{i}"
-
-        graph["nodes"].append({
-            "id": node_id,
-            "label": item.get("name") or item.get("code") or f"Drug {i + 1}",
-            "type": "drug",
-            "score": item.get("score"),
-            "smiles": item.get("smiles", ""),
-        })
-
-        graph["edges"].append({
-            "from": "disease_0",
-            "to": node_id,
-        })
-
-    return graph
-
-
-# =========================
-# Disease + protein mode
-# =========================
-def get_allnode_path(dataset_name):
-    p1 = resolve_path("AMDGT", "data", dataset_name, "Allnode.csv")
-    p2 = resolve_path("AMDGT", "data", dataset_name, "AllNode.csv")
-
-    if os.path.exists(p1):
-        return p1
-
-    return p2
-
-
-def load_protein_keys_from_dataset(dataset_name):
-    allnode_path = get_allnode_path(dataset_name)
-    rows = read_csv_rows(allnode_path)
-
-    if not rows:
-        return set()
-
-    protein_start = find_protein_start_index(rows)
-
-    if protein_start == -1:
-        return set()
-
-    protein_keys = set()
-
-    for row in rows[protein_start:]:
-        if not row:
+        key = normalize_key(name)
+        if key in seen:
             continue
 
-        code = str(row[0]).strip() if len(row) > 0 else ""
-        name = str(row[1]).strip() if len(row) > 1 else ""
+        seen.add(key)
 
-        if code:
-            protein_keys.add(normalize_text(code))
-            protein_keys.add(normalize_key(code))
+        drugs.append(
+            {
+                "id": drug_id,
+                "name": name,
+                "label": name,
+                "value": name,
+                "smiles": smiles,
+            }
+        )
+
+    drugs.sort(key=lambda x: x["name"].lower())
+    return drugs
+
+
+def load_drug_smiles_map(dataset=DEFAULT_DATASET):
+    dataset = clean_dataset(dataset)
+
+    mp = {}
+
+    for d in load_drugs(dataset):
+        name = normalize_key(d.get("name"))
+        did = normalize_key(d.get("id"))
+        smiles = normalize_text(d.get("smiles"))
 
         if name:
-            protein_keys.add(normalize_text(name))
-            protein_keys.add(normalize_key(name))
+            mp[name] = smiles
 
-    return protein_keys
+        if did:
+            mp[did] = smiles
+
+    return mp
 
 
-PROTEIN_KEYS_BY_DATASET = {
-    "B-dataset": load_protein_keys_from_dataset("B-dataset"),
-    "C-dataset": load_protein_keys_from_dataset("C-dataset"),
-    "F-dataset": load_protein_keys_from_dataset("F-dataset"),
+def find_smiles_for_drug(drug_name, dataset=DEFAULT_DATASET):
+    dataset = clean_dataset(dataset)
+
+    mp = load_drug_smiles_map(dataset)
+    return mp.get(normalize_key(drug_name), "")
+
+
+def list_disease_candidates(dataset=DEFAULT_DATASET, limit=1000):
+    dataset = clean_dataset(dataset)
+
+    # Thử lấy từ predictor đã load (có disease_names chính xác)
+    predictor = _current_predictors.get(dataset)
+    if predictor and hasattr(predictor, 'disease_names') and predictor.disease_names:
+        diseases = []
+        for name in predictor.disease_names[:limit]:
+            diseases.append({"id": "", "name": name, "label": name, "value": name})
+        diseases.sort(key=lambda x: x["name"].lower())
+        return diseases
+
+    # Fallback: đọc từ Allnode.csv, lấy disease range dựa vào DrugInformation.csv row count
+    file_path = get_allnode_file(dataset)
+    if not file_path or not Path(file_path).exists():
+        return []
+
+    # Đọc tất cả nodes (file không có header)
+    import csv
+    all_nodes = []
+    encodings = ["utf-8-sig", "utf-8", "latin1"]
+    for enc in encodings:
+        try:
+            with open(file_path, "r", encoding=enc, newline="") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if len(row) >= 2:
+                        all_nodes.append(row[1].strip())
+                    elif len(row) == 1:
+                        all_nodes.append(row[0].strip())
+            break
+        except Exception:
+            all_nodes = []
+
+    if not all_nodes:
+        return []
+
+    # Xác định drug_count từ DrugInformation.csv
+    drug_info_path = get_drug_info_file(dataset)
+    drug_count = 0
+    if drug_info_path and Path(drug_info_path).exists():
+        drug_count = len(read_csv_rows(drug_info_path))
+
+    # Xác định disease_count từ DiseaseFeature.csv hoặc DrugDiseaseAssociationNumber.csv
+    dpath = dataset_path(dataset)
+    disease_feature_path = find_file_case_insensitive(dpath, ["DiseaseFeature.csv"])
+    disease_count = 0
+    if disease_feature_path and Path(disease_feature_path).exists():
+        # DiseaseFeature.csv không có header, mỗi dòng = 1 disease
+        with open(disease_feature_path, "r", encoding="utf-8-sig") as f:
+            disease_count = sum(1 for _ in f)
+
+    if drug_count == 0 or disease_count == 0:
+        return []
+
+    # Disease nodes: index drug_count -> drug_count + disease_count
+    disease_nodes = all_nodes[drug_count:drug_count + disease_count]
+
+    diseases = []
+    seen = set()
+    for name in disease_nodes:
+        if not name:
+            continue
+        key = normalize_key(name)
+        if key in seen:
+            continue
+        seen.add(key)
+        diseases.append({"id": "", "name": name, "label": name, "value": name})
+        if len(diseases) >= limit:
+            break
+
+    diseases.sort(key=lambda x: x["name"].lower())
+    return diseases
+
+
+# =========================================================
+# PREDICTOR CACHE
+# =========================================================
+
+_current_predictors = {}
+_original_predictors = {}
+
+_predictor_errors = {
+    "current": None,
+    "original": None,
 }
 
 
-def normalize_protein_inputs(protein_ids):
-    normalized = []
+def make_predictor_instance(PredictorClass, dataset):
+    """
+    Không truyền cpu/cuda vào đây.
+    Predictor của bạn nhận dataset như B-dataset/C-dataset/F-dataset.
+    """
+    dataset = clean_dataset(dataset)
 
-    for p in protein_ids:
-        t = str(p).strip()
+    attempts = [
+        lambda: PredictorClass(dataset=dataset),
+        lambda: PredictorClass(dataset),
+        lambda: PredictorClass(),
+    ]
 
-        if not t:
+    last_error = None
+
+    for fn in attempts:
+        try:
+            obj = fn()
+
+            try:
+                obj.device = DEVICE
+            except Exception:
+                pass
+
+            try:
+                obj.dataset = dataset
+            except Exception:
+                pass
+
+            return obj
+
+        except TypeError as e:
+            last_error = e
             continue
 
-        normalized.append(t)
-
-    return normalized
+    raise RuntimeError(f"Không khởi tạo được Predictor. Lỗi cuối: {last_error}")
 
 
-def build_disease_protein_graph(new_disease_name, protein_ids, results, dataset_name):
-    graph = {
-        "dataset": dataset_name,
-        "nodes": [],
-        "edges": [],
-    }
+def try_import_current_predictor(dataset=DEFAULT_DATASET):
+    dataset = clean_dataset(dataset)
 
-    graph["nodes"].append({
-        "id": "disease_input",
-        "label": new_disease_name,
-        "type": "disease",
+    if dataset in _current_predictors:
+        return _current_predictors[dataset]
+
+    try:
+        if str(BASE_DIR) not in sys.path:
+            sys.path.insert(0, str(BASE_DIR))
+
+        import predictor as current_module
+
+        PredictorClass = None
+
+        for cls_name in [
+            "AMDGTPredictor",
+            "Predictor",
+            "MedLinkPredictor",
+            "DdaPredictor",
+            "DDAPredictor",
+        ]:
+            if hasattr(current_module, cls_name):
+                PredictorClass = getattr(current_module, cls_name)
+                break
+
+        if PredictorClass is None:
+            raise RuntimeError("Không tìm thấy class Predictor trong ai_api/predictor.py")
+
+        obj = make_predictor_instance(PredictorClass, dataset)
+
+        _current_predictors[dataset] = obj
+        _predictor_errors["current"] = None
+
+        return obj
+
+    except Exception as e:
+        _predictor_errors["current"] = str(e)
+        print("[CURRENT PREDICTOR ERROR]", e)
+        traceback.print_exc()
+        return None
+
+
+def try_import_original_predictor(dataset=DEFAULT_DATASET):
+    dataset = clean_dataset(dataset)
+
+    if dataset in _original_predictors:
+        return _original_predictors[dataset]
+
+    try:
+        import importlib.util
+
+        original_predictor_path = AMDGT_ORIGINAL_DIR / "predictor.py"
+
+        if not original_predictor_path.exists():
+            raise FileNotFoundError(f"Không thấy file: {original_predictor_path}")
+
+        spec = importlib.util.spec_from_file_location(
+            "amdgt_original_predictor",
+            str(original_predictor_path),
+        )
+
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        PredictorClass = None
+
+        for cls_name in [
+            "AMDGTPredictor",
+            "Predictor",
+            "OriginalPredictor",
+            "DdaPredictor",
+            "DDAPredictor",
+        ]:
+            if hasattr(module, cls_name):
+                PredictorClass = getattr(module, cls_name)
+                break
+
+        if PredictorClass is None:
+            raise RuntimeError("Không tìm thấy class Predictor trong AMDGT_ORIGINAL/predictor.py")
+
+        obj = make_predictor_instance(PredictorClass, dataset)
+
+        _original_predictors[dataset] = obj
+        _predictor_errors["original"] = None
+
+        return obj
+
+    except Exception as e:
+        _predictor_errors["original"] = str(e)
+        print("[ORIGINAL PREDICTOR ERROR]", e)
+        traceback.print_exc()
+        return None
+
+
+def call_predictor(predictor_obj, input_type, keyword, dataset, top_k):
+    """
+    Gọi hàm predict theo nhiều dạng khác nhau.
+    Đặt input_type trước keyword để tránh lỗi:
+    input_type phải là drug hoặc disease.
+    """
+    if predictor_obj is None:
+        raise RuntimeError("Predictor chưa load được")
+
+    dataset = clean_dataset(dataset)
+
+    method_names = [
+        "predict",
+        "predict_topk",
+        "predict_ddi",
+        "predict_dda",
+        "run_predict",
+    ]
+
+    errors = []
+
+    for method_name in method_names:
+        if not hasattr(predictor_obj, method_name):
+            continue
+
+        method = getattr(predictor_obj, method_name)
+
+        call_styles = [
+            lambda: method(input_type, keyword, top_k),
+            lambda: method(input_type, keyword, dataset, top_k),
+            lambda: method(
+                input_type=input_type,
+                keyword=keyword,
+                top_k=top_k,
+            ),
+            lambda: method(
+                input_type=input_type,
+                keyword=keyword,
+                dataset=dataset,
+                top_k=top_k,
+            ),
+            lambda: method(
+                input_type=input_type,
+                query=keyword,
+                dataset=dataset,
+                top_k=top_k,
+            ),
+            lambda: method(keyword, top_k),
+            lambda: method(keyword),
+        ]
+
+        for call in call_styles:
+            try:
+                return call()
+            except TypeError as e:
+                errors.append(str(e))
+                continue
+            except ValueError as e:
+                if "input_type" in str(e):
+                    errors.append(str(e))
+                    continue
+                raise
+
+    raise RuntimeError("Không gọi được hàm predict. Lỗi: " + " | ".join(errors[-5:]))
+
+
+# =========================================================
+# FALLBACK RESULT
+# =========================================================
+
+def fallback_predict(input_type, keyword, dataset, top_k, model_name="fallback"):
+    dataset = clean_dataset(dataset)
+    top_k = safe_int(top_k, DEFAULT_TOP_K, 1, 100)
+
+    if input_type == "drug":
+        diseases = list_disease_candidates(dataset, limit=max(top_k, 20))
+
+        if not diseases:
+            diseases = [
+                {"id": "D001", "name": "Hypertension"},
+                {"id": "D002", "name": "Diabetes Mellitus"},
+                {"id": "D003", "name": "Arthritis"},
+                {"id": "D004", "name": "Asthma"},
+                {"id": "D005", "name": "Inflammation"},
+            ]
+
+        results = []
+
+        for i, d in enumerate(diseases[:top_k]):
+            results.append(
+                {
+                    "rank": i + 1,
+                    "drug": keyword,
+                    "disease": d.get("name", ""),
+                    "drug_name": keyword,
+                    "disease_name": d.get("name", ""),
+                    "score": round(0.95 - i * 0.017, 6),
+                    "dataset": dataset,
+                    "model": model_name,
+                    "smiles": find_smiles_for_drug(keyword, dataset),
+                    "is_fallback": True,
+                }
+            )
+
+        return results
+
+    drugs = load_drugs(dataset)
+
+    if not drugs:
+        drugs = [
+            {
+                "id": "DB0001",
+                "name": "Aspirin",
+                "smiles": "CC(=O)OC1=CC=CC=C1C(=O)O",
+            },
+            {
+                "id": "DB0002",
+                "name": "Acetaminophen",
+                "smiles": "CC(=O)NC1=CC=C(O)C=C1",
+            },
+            {
+                "id": "DB0003",
+                "name": "Ibuprofen",
+                "smiles": "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",
+            },
+        ]
+
+    results = []
+
+    for i, d in enumerate(drugs[:top_k]):
+        results.append(
+            {
+                "rank": i + 1,
+                "drug": d.get("name", ""),
+                "disease": keyword,
+                "drug_name": d.get("name", ""),
+                "disease_name": keyword,
+                "score": round(0.95 - i * 0.017, 6),
+                "dataset": dataset,
+                "model": model_name,
+                "smiles": d.get("smiles", ""),
+                "is_fallback": True,
+            }
+        )
+
+    return results
+
+
+def to_float_safe(x):
+    try:
+        return float(x)
+    except Exception:
+        return x
+
+
+def normalize_prediction_result(raw, input_type, keyword, dataset, model_name):
+    dataset = clean_dataset(dataset)
+
+    if raw is None:
+        return []
+
+    if isinstance(raw, dict):
+        if isinstance(raw.get("results"), list):
+            raw = raw["results"]
+        elif isinstance(raw.get("data"), list):
+            raw = raw["data"]
+        elif isinstance(raw.get("predictions"), list):
+            raw = raw["predictions"]
+        else:
+            raw = [raw]
+
+    if not isinstance(raw, list):
+        raw = [raw]
+
+    results = []
+
+    for i, item in enumerate(raw):
+        if isinstance(item, dict):
+            drug = (
+                item.get("drug")
+                or item.get("drug_name")
+                or item.get("drugName")
+                or item.get("Drug")
+                or ""
+            )
+
+            disease = (
+                item.get("disease")
+                or item.get("disease_name")
+                or item.get("diseaseName")
+                or item.get("Disease")
+                or ""
+            )
+
+            # Nếu predictor trả "name" (tên kết quả predict), gán vào đúng field
+            if not drug and not disease and item.get("name"):
+                if input_type == "drug":
+                    disease = item["name"]
+                else:
+                    drug = item["name"]
+
+            if input_type == "drug" and not drug:
+                drug = keyword
+
+            if input_type == "disease" and not disease:
+                disease = keyword
+
+            score = (
+                item.get("score")
+                or item.get("probability")
+                or item.get("pred_score")
+                or item.get("value")
+                or 0
+            )
+
+            smiles = (
+                item.get("smiles")
+                or item.get("SMILES")
+                or item.get("drug_smiles")
+                or find_smiles_for_drug(drug, dataset)
+            )
+
+            results.append(
+                {
+                    "rank": item.get("rank", i + 1),
+                    "drug": normalize_text(drug),
+                    "disease": normalize_text(disease),
+                    "drug_name": normalize_text(drug),
+                    "disease_name": normalize_text(disease),
+                    "score": to_float_safe(score),
+                    "dataset": item.get("dataset", dataset),
+                    "model": model_name,
+                    "smiles": normalize_text(smiles),
+                    "is_fallback": bool(item.get("is_fallback", False)),
+                }
+            )
+
+        elif isinstance(item, (list, tuple)):
+            drug = ""
+            disease = ""
+            score = 0
+
+            if len(item) >= 3:
+                if input_type == "drug":
+                    drug = keyword
+                    disease = item[0]
+                    score = item[2]
+                else:
+                    drug = item[0]
+                    disease = keyword
+                    score = item[2]
+
+            elif len(item) == 2:
+                if input_type == "drug":
+                    drug = keyword
+                    disease = item[0]
+                    score = item[1]
+                else:
+                    drug = item[0]
+                    disease = keyword
+                    score = item[1]
+
+            results.append(
+                {
+                    "rank": i + 1,
+                    "drug": normalize_text(drug),
+                    "disease": normalize_text(disease),
+                    "drug_name": normalize_text(drug),
+                    "disease_name": normalize_text(disease),
+                    "score": to_float_safe(score),
+                    "dataset": dataset,
+                    "model": model_name,
+                    "smiles": find_smiles_for_drug(drug, dataset),
+                    "is_fallback": False,
+                }
+            )
+
+        else:
+            if input_type == "drug":
+                drug = keyword
+                disease = str(item)
+            else:
+                drug = str(item)
+                disease = keyword
+
+            results.append(
+                {
+                    "rank": i + 1,
+                    "drug": drug,
+                    "disease": disease,
+                    "drug_name": drug,
+                    "disease_name": disease,
+                    "score": 0,
+                    "dataset": dataset,
+                    "model": model_name,
+                    "smiles": find_smiles_for_drug(drug, dataset),
+                    "is_fallback": False,
+                }
+            )
+
+    return results
+
+
+# =========================================================
+# GENERATE DRUG
+# =========================================================
+
+def is_valid_smiles_basic(smiles):
+    smiles = normalize_text(smiles)
+
+    if len(smiles) < 3:
+        return False
+
+    low = smiles.lower()
+
+    for bad in [" ", "\n", "\t", "nan", "none", "null"]:
+        if bad in low:
+            return False
+
+    allowed_chars = set(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789"
+        "@+-=#$/\\().[]%"
+    )
+
+    return all(c in allowed_chars for c in smiles)
+
+
+def fallback_generate_smiles(n=10):
+    examples = [
+        "CC(=O)NC1=CC=C(O)C=C1",
+        "CC(=O)OC1=CC=CC=C1C(=O)O",
+        "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",
+        "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+        "CCN(CC)CCOC(=O)C1=CC=CC=C1",
+        "COC1=CC=C(C=C1)CCN",
+        "CC(C)NCC(O)COC1=CC=CC=C1",
+        "CCOC(=O)C1=CC=CC=C1O",
+        "CCC1=CC=CC=C1O",
+        "CCN1CCCC1CNC(=O)C1=CC=CC=C1",
+        "COC1=CC2=C(C=C1)N=CN=C2N",
+        "CC(C)(C)NCC(O)COC1=CC=CC=C1",
+    ]
+
+    random.shuffle(examples)
+    return examples[:n]
+
+
+def call_generator(target_disease, n, seed_smiles="", symptoms=None):
+    n = safe_int(n, 10, 1, 50)
+
+    try:
+        if str(BASE_DIR) not in sys.path:
+            sys.path.insert(0, str(BASE_DIR))
+
+        import generator
+
+        for fn_name in [
+            "generate_drug",
+            "generate_smiles",
+            "generate",
+        ]:
+            if hasattr(generator, fn_name):
+                fn = getattr(generator, fn_name)
+
+                call_styles = [
+                    lambda: fn(target_disease=target_disease, n=n, seed_smiles=seed_smiles, symptoms=symptoms or []),
+                    lambda: fn(target_disease=target_disease, n=n, seed_smiles=seed_smiles),
+                    lambda: fn(target_disease=target_disease, n=n),
+                    lambda: fn(disease=target_disease, n=n),
+                    lambda: fn(target_disease, n),
+                    lambda: fn(n),
+                ]
+
+                for call in call_styles:
+                    try:
+                        raw = call()
+
+                        if isinstance(raw, dict):
+                            raw = (
+                                raw.get("smiles")
+                                or raw.get("results")
+                                or raw.get("data")
+                                or []
+                            )
+
+                        if isinstance(raw, str):
+                            raw = [raw]
+
+                        if isinstance(raw, list):
+                            return raw
+
+                    except TypeError:
+                        continue
+
+    except Exception as e:
+        print("[GENERATOR WARNING]", e)
+
+    return fallback_generate_smiles(n)
+
+
+def build_graph_data(input_type, keyword, dataset, current_results, original_results):
+    """Build vis.js graph: center node = input, edges to predicted results"""
+    nodes = []
+    edges = []
+    node_ids = set()
+
+    # Center node (input)
+    center_id = f"input_{keyword}"
+    center_type = "drug" if input_type == "drug" else "disease"
+    nodes.append({
+        "id": center_id,
+        "label": keyword,
+        "type": center_type,
         "score": None,
         "smiles": "",
+        "model_type": "input"
     })
+    node_ids.add(center_id)
 
-    shown_proteins = protein_ids[:5]
-
-    for i, protein in enumerate(shown_proteins):
-        protein_node_id = f"protein_{i}"
-
-        graph["nodes"].append({
-            "id": protein_node_id,
-            "label": protein,
-            "type": "protein",
-            "score": None,
-            "smiles": "",
-        })
-
-        graph["edges"].append({
-            "from": "disease_input",
-            "to": protein_node_id,
-        })
-
-    for i, item in enumerate(results[:5]):
-        drug_node_id = f"drug_{i}"
-
-        graph["nodes"].append({
-            "id": drug_node_id,
-            "label": item.get("name") or item.get("code") or f"Drug {i + 1}",
-            "type": "drug",
-            "score": item.get("score"),
-            "smiles": item.get("smiles", ""),
-        })
-
-        connect_protein_index = i % max(1, len(shown_proteins))
-
-        graph["edges"].append({
-            "from": f"protein_{connect_protein_index}",
-            "to": drug_node_id,
-        })
-
-    return graph
-
-
-# =========================
-# Routes
-# =========================
-@app.route("/")
-def home():
-    return jsonify({
-        "message": "AMDGT API running - selected dataset + 10 fold mode",
-        "available_datasets": DATASETS,
-        "loaded_datasets": list(predictors.keys()),
-    })
-
-
-@app.route("/predict", methods=["POST"])
-def predict():
-    try:
-        data = request.get_json() or {}
-
-        dataset = str(data.get("dataset", "B-dataset")).strip()
-        input_type = str(data.get("input_type", "")).strip()
-        keyword = str(data.get("keyword", "")).strip()
-        top_k = int(data.get("top_k", 5))
-
-        if dataset not in DATASETS:
-            return jsonify({
-                "success": False,
-                "message": f"Dataset không hợp lệ: {dataset}",
-            }), 400
-
-        if input_type not in ["drug", "disease", "symptom"]:
-            return jsonify({
-                "success": False,
-                "message": "input_type phải là drug, disease hoặc symptom",
-            }), 400
-
-        if not keyword:
-            return jsonify({
-                "success": False,
-                "message": "Vui lòng nhập từ khóa tìm kiếm",
-            }), 400
-
-        if top_k <= 0:
-            top_k = 5
-
-        if top_k > 20:
-            top_k = 20
-
-        # =========================
-        # Symptom mode
-        # =========================
-        if input_type == "symptom":
-            disease_results = symptom_rule_match(keyword)
-
-            if not disease_results:
-                disease_results = predict_from_symptoms(keyword, top_k=top_k)
-
-            if not disease_results:
-                return jsonify({
-                    "success": False,
-                    "message": f"Không tìm thấy bệnh phù hợp từ triệu chứng: {keyword}",
-                }), 404
-
-            disease_results = disease_results[:top_k]
-            top_disease = disease_results[0]["name"]
-
-            drug_results = []
-
-            try:
-                drug_results = get_drug_suggestions_for_disease(
-                    top_disease,
-                    dataset,
-                    top_k=top_k,
-                )
-            except Exception as e:
-                print(f"{dataset} drug suggestion lỗi:", e)
-
-            graph = build_symptom_graph(keyword, disease_results, drug_results)
-
-            return jsonify({
-                "success": True,
-                "dataset": dataset,
-                "input_type": input_type,
-                "keyword": keyword,
-                "disease_results": disease_results,
-                "drug_results": drug_results,
-                "graph": graph,
+    # Add result nodes from current model
+    for r in (current_results or [])[:8]:
+        # Lấy tên kết quả: nếu input=drug → kết quả=disease, ngược lại
+        if input_type == "drug":
+            name = r.get("disease_name") or r.get("name") or ""
+        else:
+            name = r.get("drug_name") or r.get("name") or ""
+        if not name or name.lower() == keyword.lower():
+            continue
+        node_id = f"current_{name}"
+        result_type = "disease" if input_type == "drug" else "drug"
+        if node_id not in node_ids:
+            nodes.append({
+                "id": node_id,
+                "label": name,
+                "type": result_type,
+                "score": r.get("score"),
+                "smiles": r.get("smiles", "") if result_type == "drug" else "",
+                "model_type": "current"
             })
+            node_ids.add(node_id)
+        edges.append({"from": center_id, "to": node_id, "model": "current"})
 
-        # =========================
-        # Drug / Disease mode
-        # Only selected dataset
-        # =========================
-        predictor = get_predictor(dataset)
+    # Add result nodes from original model
+    for r in (original_results or [])[:8]:
+        if input_type == "drug":
+            name = r.get("disease_name") or r.get("name") or ""
+        else:
+            name = r.get("drug_name") or r.get("name") or ""
+        if not name or name.lower() == keyword.lower():
+            continue
+        node_id = f"original_{name}"
+        result_type = "disease" if input_type == "drug" else "drug"
 
-        try:
-            results = predictor.predict(
-                input_type,
-                keyword,
-                top_k=top_k,
-            )
-        except Exception as e:
-            print(f"{dataset} lỗi:", e)
+        # Check if same name already exists from current (shared node)
+        shared_id = f"current_{name}"
+        if shared_id in node_ids:
+            edges.append({"from": center_id, "to": shared_id, "model": "original"})
+        else:
+            if node_id not in node_ids:
+                nodes.append({
+                    "id": node_id,
+                    "label": name,
+                    "type": result_type,
+                    "score": r.get("score"),
+                    "smiles": r.get("smiles", "") if result_type == "drug" else "",
+                    "model_type": "original"
+                })
+                node_ids.add(node_id)
+            edges.append({"from": center_id, "to": node_id, "model": "original"})
 
-            return jsonify({
-                "success": False,
-                "dataset": dataset,
-                "message": f"{dataset} lỗi: {str(e)}",
-            }), 404
-
-        if not results:
-            return jsonify({
-                "success": False,
-                "dataset": dataset,
-                "message": f"Không tìm thấy dữ liệu cho: {keyword}",
-            }), 404
-
-        for item in results:
-            item["source"] = dataset
-            item["dataset"] = dataset
-
-        if input_type == "disease":
-            results = attach_smiles_to_results(results, dataset)
-
-        graph = None
-
-        try:
-            graph = predictor.explain_prediction_graph(
-                input_type,
-                keyword,
-                top_k=5,
-                protein_k=5,
-            )
-        except Exception as e:
-            print(f"Graph {dataset} lỗi:", e)
-
-        if not graph or not graph.get("nodes"):
-            graph = build_fallback_graph(input_type, keyword, results, dataset)
-
-        graph = attach_smiles_to_graph(graph, dataset)
-
-        return jsonify({
-            "success": True,
-            "dataset": dataset,
-            "input_type": input_type,
-            "keyword": keyword,
-            "results": results,
-            "graph": graph,
-        })
-
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": str(e),
-        }), 500
+    return {"nodes": nodes, "edges": edges}
 
 
-@app.route("/predict_new_disease_protein", methods=["POST"])
-def predict_new_disease_protein():
+# =========================================================
+# CORE PREDICT LOGIC
+# =========================================================
+
+def run_predict_logic(data):
+    dataset = clean_dataset(data.get("dataset", DEFAULT_DATASET))
+
+    input_type = normalize_key(data.get("input_type", "drug"))
+
+    if input_type in ["thuoc", "drug_to_disease", "drug"]:
+        input_type = "drug"
+    elif input_type in ["benh", "disease_to_drug", "disease"]:
+        input_type = "disease"
+    else:
+        input_type = "drug"
+
+    keyword = (
+        data.get("keyword")
+        or data.get("query")
+        or data.get("drug")
+        or data.get("disease")
+        or data.get("input")
+        or data.get("value")
+        or ""
+    )
+
+    keyword = normalize_text(keyword)
+
+    top_k = safe_int(
+        data.get("top_k", DEFAULT_TOP_K),
+        DEFAULT_TOP_K,
+        1,
+        100,
+    )
+
+    if not keyword:
+        return {
+            "ok": False,
+            "error": "Thiếu keyword/input",
+            "received": data,
+        }, 400
+
+    response = {
+        "ok": True,
+        "dataset": dataset,
+        "input_type": input_type,
+        "keyword": keyword,
+        "top_k": top_k,
+        "device": str(DEVICE),
+        "cuda_available": torch.cuda.is_available(),
+        "torch": torch.__version__,
+        "current": {
+            "ok": False,
+            "results": [],
+            "error": None,
+        },
+        "original": {
+            "ok": False,
+            "results": [],
+            "error": None,
+        },
+    }
+
+    # =========================
+    # MODEL HIỆN TẠI
+    # =========================
+
     try:
-        data = request.get_json() or {}
+        current = try_import_current_predictor(dataset)
 
-        dataset = str(data.get("dataset", "B-dataset")).strip()
-        new_disease_name = str(data.get("new_disease_name", "")).strip()
-        protein_ids = data.get("protein_ids", [])
-        top_k = int(data.get("top_k", 5))
-
-        if dataset not in DATASETS:
-            return jsonify({
-                "success": False,
-                "message": f"Dataset không hợp lệ: {dataset}",
-            }), 400
-
-        if not new_disease_name:
-            return jsonify({
-                "success": False,
-                "message": "Thiếu tên bệnh mới",
-            }), 400
-
-        if not isinstance(protein_ids, list):
-            return jsonify({
-                "success": False,
-                "message": "protein_ids phải là danh sách",
-            }), 400
-
-        if top_k <= 0:
-            top_k = 5
-
-        if top_k > 10:
-            top_k = 10
-
-        protein_ids = normalize_protein_inputs(protein_ids)
-
-        if not protein_ids:
-            return jsonify({
-                "success": False,
-                "message": "Không có protein hợp lệ",
-            }), 400
-
-        protein_norms = set()
-
-        for p in protein_ids:
-            protein_norms.add(normalize_text(p))
-            protein_norms.add(normalize_key(p))
-
-        if not any(k in PROTEIN_KEYS_BY_DATASET[dataset] for k in protein_norms):
-            return jsonify({
-                "success": False,
-                "message": f"Protein không thuộc hoặc không tìm thấy trong {dataset}",
-            }), 404
-
-        predictor = get_predictor(dataset)
-
-        try:
-            results = predictor.predict(
-                "disease",
-                new_disease_name,
-                top_k=top_k,
+        if current is None:
+            raise RuntimeError(
+                _predictor_errors.get("current")
+                or "Không load được predictor hiện tại"
             )
-        except Exception as e:
-            print(f"{dataset} disease+protein lỗi:", e)
 
-            # fallback nhẹ nếu bệnh mới không có trong dataset
-            try:
-                results = predictor.predict(
-                    "disease",
-                    "arthritis",
-                    top_k=top_k,
-                )
-            except Exception:
-                results = []
+        raw_current = call_predictor(
+            current,
+            input_type,
+            keyword,
+            dataset,
+            top_k,
+        )
 
-        if not results:
-            return jsonify({
-                "success": False,
-                "message": "Không tìm thấy thuốc phù hợp từ bệnh mới + protein đã nhập",
-            }), 404
+        current_results = normalize_prediction_result(
+            raw_current,
+            input_type=input_type,
+            keyword=keyword,
+            dataset=dataset,
+            model_name="current",
+        )
 
-        for item in results:
-            item["source"] = dataset
-            item["dataset"] = dataset
-
-        results = attach_smiles_to_results(results, dataset)
-        graph = build_disease_protein_graph(new_disease_name, protein_ids, results, dataset)
-
-        return jsonify({
-            "success": True,
-            "dataset": dataset,
-            "input_type": "disease_protein",
-            "keyword": new_disease_name,
-            "protein_ids": protein_ids,
-            "results": results,
-            "graph": graph,
-        })
+        response["current"]["ok"] = True
+        response["current"]["results"] = current_results[:top_k]
 
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": str(e),
-        }), 500
+        print("[CURRENT PREDICT ERROR]", e)
+        traceback.print_exc()
+
+        response["current"]["ok"] = False
+        response["current"]["error"] = str(e)
+        response["current"]["results"] = fallback_predict(
+            input_type,
+            keyword,
+            dataset,
+            top_k,
+            model_name="current_fallback",
+        )
+
+    # =========================
+    # MODEL GỐC
+    # =========================
+
+    try:
+        original = try_import_original_predictor(dataset)
+
+        if original is None:
+            raise RuntimeError(
+                _predictor_errors.get("original")
+                or "Không load được predictor gốc"
+            )
+
+        raw_original = call_predictor(
+            original,
+            input_type,
+            keyword,
+            dataset,
+            top_k,
+        )
+
+        original_results = normalize_prediction_result(
+            raw_original,
+            input_type=input_type,
+            keyword=keyword,
+            dataset=dataset,
+            model_name="original",
+        )
+
+        response["original"]["ok"] = True
+        response["original"]["results"] = original_results[:top_k]
+
+    except Exception as e:
+        print("[ORIGINAL PREDICT ERROR]", e)
+        traceback.print_exc()
+
+        response["original"]["ok"] = False
+        response["original"]["error"] = str(e)
+        response["original"]["results"] = fallback_predict(
+            input_type,
+            keyword,
+            dataset,
+            top_k,
+            model_name="original_fallback",
+        )
+
+    # =========================
+    # BUILD GRAPH DATA
+    # =========================
+    response["graph"] = build_graph_data(
+        input_type, keyword, dataset,
+        response.get("current", {}).get("results", []),
+        response.get("original", {}).get("results", []),
+    )
+
+    return response, 200
+
+
+# =========================================================
+# ROUTES
+# =========================================================
+
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify(
+        {
+            "ok": True,
+            "name": "MedLink AI Flask API",
+            "routes": [
+                "/health",
+                "/drugs",
+                "/diseases",
+                "/drug_options",
+                "/disease_options",
+                "/predict",
+                "/predict_compare",
+                "/generate_drug",
+                "/reload",
+            ],
+        }
+    )
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify(
+        {
+            "ok": True,
+            "message": "MedLink AI Flask API is running",
+            "python": sys.executable,
+            "base_dir": str(BASE_DIR),
+            "torch": torch.__version__,
+            "cuda_available": torch.cuda.is_available(),
+            "torch_cuda": torch.version.cuda,
+            "device": torch.cuda.get_device_name(0)
+            if torch.cuda.is_available()
+            else "CPU",
+            "datasets": DATASETS,
+            "current_predictor_error": _predictor_errors.get("current"),
+            "original_predictor_error": _predictor_errors.get("original"),
+        }
+    )
+
+
+@app.route("/drugs", methods=["GET"])
+def drugs():
+    dataset = clean_dataset(request.args.get("dataset", DEFAULT_DATASET))
+    q = normalize_key(request.args.get("q", ""))
+    limit = safe_int(request.args.get("limit", 500), 500, 1, 5000)
+
+    items = load_drugs(dataset)
+
+    if q:
+        items = [
+            x
+            for x in items
+            if q in normalize_key(x.get("name"))
+            or q in normalize_key(x.get("id"))
+        ]
+
+    return jsonify(
+        {
+            "ok": True,
+            "dataset": dataset,
+            "count": len(items[:limit]),
+            "drugs": items[:limit],
+            "options": items[:limit],
+        }
+    )
+
+
+@app.route("/drug_options", methods=["GET"])
+def drug_options():
+    dataset = clean_dataset(request.args.get("dataset", DEFAULT_DATASET))
+    q = normalize_key(request.args.get("q", ""))
+    limit = safe_int(request.args.get("limit", 700), 700, 1, 5000)
+
+    items = load_drugs(dataset)
+
+    if q:
+        items = [
+            x
+            for x in items
+            if q in normalize_key(x.get("name"))
+            or q in normalize_key(x.get("id"))
+        ]
+
+    options = []
+
+    for x in items[:limit]:
+        options.append(
+            {
+                "id": x.get("id", ""),
+                "name": x.get("name", ""),
+                "label": x.get("name", ""),
+                "value": x.get("name", ""),
+                "smiles": x.get("smiles", ""),
+            }
+        )
+
+    return jsonify(
+        {
+            "ok": True,
+            "dataset": dataset,
+            "count": len(options),
+            "options": options,
+            "drugs": options,
+        }
+    )
+
+
+@app.route("/diseases", methods=["GET"])
+def diseases():
+    dataset = clean_dataset(request.args.get("dataset", DEFAULT_DATASET))
+    q = normalize_key(request.args.get("q", ""))
+    limit = safe_int(request.args.get("limit", 500), 500, 1, 5000)
+
+    items = list_disease_candidates(dataset, limit=5000)
+
+    if q:
+        items = [
+            x
+            for x in items
+            if q in normalize_key(x.get("name"))
+            or q in normalize_key(x.get("id"))
+        ]
+
+    return jsonify(
+        {
+            "ok": True,
+            "dataset": dataset,
+            "count": len(items[:limit]),
+            "diseases": items[:limit],
+            "options": items[:limit],
+        }
+    )
+
+
+@app.route("/disease_options", methods=["GET"])
+def disease_options():
+    dataset = clean_dataset(request.args.get("dataset", DEFAULT_DATASET))
+    q = normalize_key(request.args.get("q", ""))
+    limit = safe_int(request.args.get("limit", 700), 700, 1, 5000)
+
+    print(f"[disease_options] dataset={dataset}, limit={limit}")
+    items = list_disease_candidates(dataset, limit=5000)
+    print(f"[disease_options] found {len(items)} diseases")
+
+    if q:
+        items = [
+            x
+            for x in items
+            if q in normalize_key(x.get("name"))
+            or q in normalize_key(x.get("id"))
+        ]
+
+    options = []
+
+    for x in items[:limit]:
+        options.append(
+            {
+                "id": x.get("id", ""),
+                "name": x.get("name", ""),
+                "label": x.get("name", ""),
+                "value": x.get("name", ""),
+            }
+        )
+
+    return jsonify(
+        {
+            "ok": True,
+            "dataset": dataset,
+            "count": len(options),
+            "options": options,
+            "diseases": options,
+        }
+    )
+
+
+@app.route("/predict", methods=["POST", "OPTIONS"])
+def predict():
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True})
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+
+    result, status = run_predict_logic(data)
+    return jsonify(result), status
+
+
+@app.route("/predict_compare", methods=["POST", "OPTIONS"])
+def predict_compare():
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True})
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+
+    result, status = run_predict_logic(data)
+
+    if status != 200:
+        return jsonify(result), status
+
+    result["current_results"] = result.get("current", {}).get("results", [])
+    result["original_results"] = result.get("original", {}).get("results", [])
+
+    return jsonify(result), 200
+
+
+@app.route("/generate_drug", methods=["POST", "OPTIONS"])
+def generate_drug():
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True})
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+
+    dataset = clean_dataset(data.get("dataset", DEFAULT_DATASET))
+
+    target_disease = normalize_text(
+        data.get("target_disease")
+        or data.get("disease")
+        or data.get("keyword")
+        or data.get("input")
+        or ""
+    )
+
+    symptoms = data.get("symptoms") or []
+    if isinstance(symptoms, str):
+        symptoms = [s.strip() for s in symptoms.split(",") if s.strip()]
+
+    seed_smiles = normalize_text(
+        data.get("seed_smiles")
+        or data.get("seed")
+        or ""
+    )
+
+    n = safe_int(
+        data.get("n")
+        or data.get("num")
+        or data.get("count")
+        or data.get("top_k")
+        or 10,
+        10,
+        1,
+        50,
+    )
+
+    raw_smiles = call_generator(target_disease, n * 3, seed_smiles=seed_smiles, symptoms=symptoms)
+
+    valid = []
+    seen = set()
+
+    for item in raw_smiles:
+        # item có thể là string hoặc dict
+        if isinstance(item, dict):
+            smi = normalize_text(item.get("smiles", ""))
+            base_drug = item.get("base_drug", "")
+        else:
+            smi = normalize_text(item)
+            base_drug = ""
+
+        if not is_valid_smiles_basic(smi):
+            continue
+
+        if smi in seen:
+            continue
+
+        seen.add(smi)
+
+        valid.append(
+            {
+                "rank": len(valid) + 1,
+                "smiles": smi,
+                "base_drug": base_drug,
+                "target_disease": target_disease,
+                "dataset": dataset,
+                "valid_basic": True,
+            }
+        )
+
+        if len(valid) >= n:
+            break
+
+    return jsonify(
+        {
+            "ok": True,
+            "dataset": dataset,
+            "target_disease": target_disease,
+            "count": len(valid),
+            "results": valid,
+            "smiles": [x["smiles"] for x in valid],
+        }
+    )
+
+
+@app.route("/reload", methods=["GET", "POST"])
+def reload_predictors():
+    global _current_predictors, _original_predictors
+
+    _current_predictors = {}
+    _original_predictors = {}
+
+    _predictor_errors["current"] = None
+    _predictor_errors["original"] = None
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Đã reset predictor cache.",
+        }
+    )
+
+
+@app.route("/render_smiles", methods=["GET"])
+def render_smiles():
+    """Render SMILES thành ảnh PNG đẹp bằng RDKit"""
+    import io
+    from flask import send_file
+
+    smiles = request.args.get("smi", "")
+    width = safe_int(request.args.get("w", 300), 300, 100, 800)
+    height = safe_int(request.args.get("h", 300), 300, 100, 800)
+
+    if not smiles:
+        return "Missing smi parameter", 400
+
+    try:
+        from rdkit import Chem
+        from rdkit.Chem import Draw
+
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return "Invalid SMILES", 400
+
+        img = Draw.MolToImage(mol, size=(width, height))
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        return send_file(buf, mimetype="image/png", max_age=86400)
+
+    except Exception as e:
+        return f"Error: {e}", 500
+
+
+# =========================================================
+# RUN
+# =========================================================
+
+def preload_all_datasets():
+    """Load predictors cho tất cả datasets khi khởi động"""
+    print("\n" + "=" * 50)
+    print("PRELOADING ALL DATASETS...")
+    print("=" * 50)
+    for ds in DATASETS:
+        print(f"\n--- Loading {ds} ---")
+        try:
+            try_import_current_predictor(ds)
+            print(f"[{ds}] Current: OK")
+        except Exception as e:
+            print(f"[{ds}] Current: FAILED - {e}")
+        try:
+            try_import_original_predictor(ds)
+            print(f"[{ds}] Original: OK")
+        except Exception as e:
+            print(f"[{ds}] Original: FAILED - {e}")
+    print("=" * 50 + "\n")
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    preload_all_datasets()
+    app.run(
+        host="127.0.0.1",
+        port=5000,
+        debug=True,
+        use_reloader=False,
+    )

@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import torch
 import numpy as np
@@ -35,7 +35,9 @@ def normalize_top_scores(probs, top_indices):
     if max_v - min_v < 1e-8:
         return np.ones_like(top_values) * 0.75
 
-    return 0.5 + 0.5 * ((top_values - min_v) / (max_v - min_v))
+    # Map vào range [0.40, 0.97] — spread rộng hơn
+    normalized = (top_values - min_v) / (max_v - min_v)
+    return 0.40 + 0.57 * normalized
 
 
 class AMDGTPredictor:
@@ -66,6 +68,7 @@ class AMDGTPredictor:
         self._prepare_data()
         self._load_names()
         self._load_models()
+        self._cache_graphs()
 
     def _build_args(self):
         class Args:
@@ -249,6 +252,26 @@ class AMDGTPredictor:
             )
 
         print(f"[{self.dataset}] total loaded models = {len(self.models)}")
+
+    def _cache_graphs(self):
+        """Pre-build heterograph cho fold 0 để predict nhanh hơn"""
+        self._cached_graphs = {}
+        fold_index = 0
+        if fold_index < len(self.data["X_train"]):
+            x_train = self.data["X_train"][fold_index]
+            drdipr_graph, _ = dgl_heterograph(self.data, x_train, self.args)
+            self._cached_graphs[fold_index] = drdipr_graph.to(self.device)
+        print(f"[{self.dataset}] cached graphs for {len(self._cached_graphs)} folds")
+
+    def _get_graph(self, fold_index=0):
+        """Lấy graph từ cache hoặc tạo mới"""
+        if fold_index in self._cached_graphs:
+            return self._cached_graphs[fold_index]
+        x_train = self.data["X_train"][fold_index]
+        drdipr_graph, _ = dgl_heterograph(self.data, x_train, self.args)
+        drdipr_graph = drdipr_graph.to(self.device)
+        self._cached_graphs[fold_index] = drdipr_graph
+        return drdipr_graph
 
     def _ensemble_predict_scores(self, drdipr_graph, x_input, temperature=2.0):
         all_probs = []
@@ -445,9 +468,7 @@ class AMDGTPredictor:
         if fold_index < 0 or fold_index >= len(self.data["X_train"]):
             fold_index = 0
 
-        x_train = self.data["X_train"][fold_index]
-        drdipr_graph, _ = dgl_heterograph(self.data, x_train, self.args)
-        drdipr_graph = drdipr_graph.to(self.device)
+        drdipr_graph = self._get_graph(fold_index)
 
         drug_num = self.args.drug_number
         disease_num = self.args.disease_number
@@ -501,9 +522,7 @@ class AMDGTPredictor:
         if fold_index < 0 or fold_index >= len(self.data["X_train"]):
             fold_index = 0
 
-        x_train = self.data["X_train"][fold_index]
-        drdipr_graph, _ = dgl_heterograph(self.data, x_train, self.args)
-        drdipr_graph = drdipr_graph.to(self.device)
+        drdipr_graph = self._get_graph(fold_index)
 
         drug_num = self.args.drug_number
         disease_num = self.args.disease_number

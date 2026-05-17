@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 require_once '../app/models/PredictionModel.php';
 require_once '../app/models/HistoryModel.php';
@@ -11,6 +11,12 @@ class PredictionController
             header('Location: index.php?action=login');
             exit;
         }
+
+        $history = [];
+        try {
+            $historyModel = new HistoryModel();
+            $history = $historyModel->recent($_SESSION['user_id'], 10);
+        } catch (Exception $e) {}
 
         include '../app/views/user/dashboard.php';
     }
@@ -46,17 +52,17 @@ class PredictionController
         }
 
         if ($keyword === '') {
-            $this->setFlashError('Vui lòng nhập từ khóa.');
+            $this->setFlashError('Vui lÃ²ng nháº­p tá»« khÃ³a.');
             $this->redirectDashboard();
         }
 
         if (!in_array($input_type, ['drug', 'disease', 'symptom'], true)) {
-            $this->setFlashError('Kiểu tra cứu không hợp lệ.');
+            $this->setFlashError('Kiá»ƒu tra cá»©u khÃ´ng há»£p lá»‡.');
             $this->redirectDashboard();
         }
 
         if ($input_type === 'symptom' && $model_type !== 'current') {
-            $this->setFlashError('Model gốc chỉ so sánh cho drug/disease. Triệu chứng chỉ dùng model hiện tại.');
+            $this->setFlashError('Model gá»‘c chá»‰ so sÃ¡nh cho drug/disease. Triá»‡u chá»©ng chá»‰ dÃ¹ng model hiá»‡n táº¡i.');
             $this->redirectDashboard();
         }
 
@@ -75,9 +81,9 @@ class PredictionController
         $originalApi = 'http://127.0.0.1:5001/predict';
 
         if ($model_type === 'current') {
-            $data = $this->callAiApi($currentApi, $payload, 'model hiện tại');
+            $data = $this->callAiApi($currentApi, $payload, 'model hiá»‡n táº¡i');
 
-            $results = $this->normalizeResults($data['results'] ?? [], 'Model hiện tại - ' . $dataset);
+            $results = $this->normalizeResults($data['results'] ?? [], 'Model hiá»‡n táº¡i - ' . $dataset);
             $graph = $data['graph'] ?? [
                 'nodes' => [],
                 'edges' => [],
@@ -101,9 +107,9 @@ class PredictionController
         }
 
         if ($model_type === 'original') {
-            $data = $this->callAiApi($originalApi, $payload, 'model gốc AMDGT');
+            $data = $this->callAiApi($originalApi, $payload, 'model gá»‘c AMDGT');
 
-            $results = $this->normalizeResults($data['results'] ?? [], 'Model gốc AMDGT - ' . $dataset);
+            $results = $this->normalizeResults($data['results'] ?? [], 'Model gá»‘c AMDGT - ' . $dataset);
             $graph = $data['graph'] ?? [
                 'nodes' => [],
                 'edges' => [],
@@ -123,33 +129,33 @@ class PredictionController
         }
 
         if ($model_type === 'compare') {
-            $currentData = $this->callAiApi($currentApi, $payload, 'model hiện tại');
-            $originalData = $this->callAiApi($originalApi, $payload, 'model gốc AMDGT');
+            $currentData = $this->callAiApi($currentApi, $payload, 'model hiá»‡n táº¡i');
+            $originalData = $this->callAiApi($originalApi, $payload, 'model gá»‘c AMDGT');
 
             $currentResults = $this->normalizeResults(
                 $currentData['results'] ?? [],
-                'Model hiện tại - ' . $dataset
+                'Model hiá»‡n táº¡i - ' . $dataset
             );
 
             $originalResults = $this->normalizeResults(
                 $originalData['results'] ?? [],
-                'Model gốc AMDGT - ' . $dataset
+                'Model gá»‘c AMDGT - ' . $dataset
             );
 
             $results = [];
 
             foreach ($currentResults as $item) {
-                $item['compare_group'] = 'Model hiện tại';
+                $item['compare_group'] = 'Model hiá»‡n táº¡i';
                 $results[] = $item;
             }
 
             foreach ($originalResults as $item) {
-                $item['compare_group'] = 'Model gốc AMDGT';
+                $item['compare_group'] = 'Model gá»‘c AMDGT';
                 $results[] = $item;
             }
 
             if (empty($results)) {
-                $this->setFlashError('Không có kết quả so sánh.');
+                $this->setFlashError('KhÃ´ng cÃ³ káº¿t quáº£ so sÃ¡nh.');
                 $this->redirectDashboard();
             }
 
@@ -194,7 +200,7 @@ class PredictionController
             $error = curl_error($ch);
             curl_close($ch);
 
-            $this->setFlashError('Lỗi gọi ' . $label . ': ' . $error);
+            $this->setFlashError('Lá»—i gá»i ' . $label . ': ' . $error);
             $this->redirectDashboard();
         }
 
@@ -203,8 +209,8 @@ class PredictionController
         $data = json_decode($response, true);
 
         if ($httpCode !== 200 || !$data || empty($data['success'])) {
-            $apiMessage = $data['message'] ?? 'Không lấy được kết quả từ ' . $label;
-            $this->setFlashError('Lỗi ' . $label . ': ' . $apiMessage);
+            $apiMessage = $data['message'] ?? 'KhÃ´ng láº¥y Ä‘Æ°á»£c káº¿t quáº£ tá»« ' . $label;
+            $this->setFlashError('Lá»—i ' . $label . ': ' . $apiMessage);
             $this->redirectDashboard();
         }
 
@@ -241,7 +247,7 @@ class PredictionController
                 'name'    => $item['name_vi'] ?? ($item['name'] ?? ''),
                 'code'    => $item['name'] ?? '',
                 'score'   => $item['score'] ?? 0,
-                'source'  => 'Symptom → Disease (' . $dataset . ')',
+                'source'  => 'Symptom â†’ Disease (' . $dataset . ')',
                 'smiles'  => '',
                 'dataset' => $dataset
             ];
@@ -252,7 +258,7 @@ class PredictionController
                 'name'    => $item['name'] ?? '',
                 'code'    => $item['code'] ?? '',
                 'score'   => $item['score'] ?? 0,
-                'source'  => $item['source'] ?? ('Disease → Drug (' . $dataset . ')'),
+                'source'  => $item['source'] ?? ('Disease â†’ Drug (' . $dataset . ')'),
                 'smiles'  => $item['smiles'] ?? '',
                 'dataset' => $dataset
             ];
@@ -264,7 +270,7 @@ class PredictionController
     private function saveAndShow($input_type, $displayKeyword, $results, $graph, $dataset, $model_type, $top_k)
     {
         if (empty($results)) {
-            $this->setFlashError('Không tìm thấy dữ liệu phù hợp cho từ khóa: ' . $displayKeyword);
+            $this->setFlashError('KhÃ´ng tÃ¬m tháº¥y dá»¯ liá»‡u phÃ¹ há»£p cho tá»« khÃ³a: ' . $displayKeyword);
             $this->redirectDashboard();
         }
 
@@ -288,7 +294,7 @@ class PredictionController
             ], JSON_UNESCAPED_UNICODE);
 
             $historyModel = new HistoryModel();
-            $historyModel->save($_SESSION['user_id'], $input_type, $displayKeyword, $summary);
+            $historyModel->add($_SESSION['user_id'], $input_type, $displayKeyword, $summary);
         } catch (Exception $e) {
         }
 
@@ -324,12 +330,12 @@ class PredictionController
         }
 
         if ($new_disease_name === '') {
-            $this->setFlashError('Vui lòng nhập tên bệnh mới.');
+            $this->setFlashError('Vui lÃ²ng nháº­p tÃªn bá»‡nh má»›i.');
             $this->redirectDashboard();
         }
 
         if ($protein_input === '') {
-            $this->setFlashError('Vui lòng nhập ít nhất một protein ID.');
+            $this->setFlashError('Vui lÃ²ng nháº­p Ã­t nháº¥t má»™t protein ID.');
             $this->redirectDashboard();
         }
 
@@ -337,7 +343,7 @@ class PredictionController
         $protein_list = array_values(array_filter(array_map('trim', $protein_list)));
 
         if (empty($protein_list)) {
-            $this->setFlashError('Danh sách protein không hợp lệ.');
+            $this->setFlashError('Danh sÃ¡ch protein khÃ´ng há»£p lá»‡.');
             $this->redirectDashboard();
         }
 
@@ -362,7 +368,7 @@ class PredictionController
         ];
 
         if (empty($results)) {
-            $this->setFlashError('Không tìm thấy thuốc phù hợp từ protein đã nhập.');
+            $this->setFlashError('KhÃ´ng tÃ¬m tháº¥y thuá»‘c phÃ¹ há»£p tá»« protein Ä‘Ã£ nháº­p.');
             $this->redirectDashboard();
         }
 
@@ -388,7 +394,7 @@ class PredictionController
 
         try {
             $historyModel = new HistoryModel();
-            $historyModel->save($_SESSION['user_id'], $input_type, $displayKeyword, $summary);
+            $historyModel->add($_SESSION['user_id'], $input_type, $displayKeyword, $summary);
         } catch (Exception $e) {
         }
 
@@ -410,11 +416,12 @@ class PredictionController
 
         try {
             $historyModel = new HistoryModel();
-            $items = $historyModel->getByUser($_SESSION['user_id']);
+            $items = $historyModel->recent($_SESSION['user_id'], 50);
         } catch (Exception $e) {
             $items = [];
         }
 
+        $history = $items;
         include '../app/views/user/history.php';
     }
 
@@ -431,12 +438,12 @@ class PredictionController
             try {
                 $historyModel = new HistoryModel();
                 $historyModel->deleteById($id, $_SESSION['user_id']);
-                $_SESSION['flash_success'] = 'Đã xóa mục lịch sử.';
+                $_SESSION['flash_success'] = 'ÄÃ£ xÃ³a má»¥c lá»‹ch sá»­.';
             } catch (Exception $e) {
-                $_SESSION['flash_error'] = 'Không thể xóa mục lịch sử.';
+                $_SESSION['flash_error'] = 'KhÃ´ng thá»ƒ xÃ³a má»¥c lá»‹ch sá»­.';
             }
         } else {
-            $_SESSION['flash_error'] = 'ID lịch sử không hợp lệ.';
+            $_SESSION['flash_error'] = 'ID lá»‹ch sá»­ khÃ´ng há»£p lá»‡.';
         }
 
         header('Location: /MEDLINK_AI/public/index.php?action=history');
@@ -453,9 +460,9 @@ class PredictionController
         try {
             $historyModel = new HistoryModel();
             $historyModel->deleteAllByUser($_SESSION['user_id']);
-            $_SESSION['flash_success'] = 'Đã xóa toàn bộ lịch sử.';
+            $_SESSION['flash_success'] = 'ÄÃ£ xÃ³a toÃ n bá»™ lá»‹ch sá»­.';
         } catch (Exception $e) {
-            $_SESSION['flash_error'] = 'Không thể xóa toàn bộ lịch sử.';
+            $_SESSION['flash_error'] = 'KhÃ´ng thá»ƒ xÃ³a toÃ n bá»™ lá»‹ch sá»­.';
         }
 
         header('Location: /MEDLINK_AI/public/index.php?action=history');
