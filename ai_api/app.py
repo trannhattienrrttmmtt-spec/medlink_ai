@@ -896,7 +896,9 @@ def call_generator(target_disease, n, seed_smiles="", symptoms=None):
 
 
 def build_graph_data(input_type, keyword, dataset, current_results, original_results):
-    """Build vis.js graph: center node = input, edges to predicted results"""
+    """Build graph: center node = input, edges to results + shared proteins"""
+    import csv
+
     nodes = []
     edges = []
     node_ids = set()
@@ -915,8 +917,7 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
     node_ids.add(center_id)
 
     # Add result nodes from current model
-    for r in (current_results or [])[:8]:
-        # Lấy tên kết quả: nếu input=drug → kết quả=disease, ngược lại
+    for r in (current_results or [])[:6]:
         if input_type == "drug":
             name = r.get("disease_name") or r.get("name") or ""
         else:
@@ -938,7 +939,7 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
         edges.append({"from": center_id, "to": node_id, "model": "current"})
 
     # Add result nodes from original model
-    for r in (original_results or [])[:8]:
+    for r in (original_results or [])[:6]:
         if input_type == "drug":
             name = r.get("disease_name") or r.get("name") or ""
         else:
@@ -948,7 +949,6 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
         node_id = f"original_{name}"
         result_type = "disease" if input_type == "drug" else "drug"
 
-        # Check if same name already exists from current (shared node)
         shared_id = f"current_{name}"
         if shared_id in node_ids:
             edges.append({"from": center_id, "to": shared_id, "model": "original"})
@@ -964,6 +964,102 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
                 })
                 node_ids.add(node_id)
             edges.append({"from": center_id, "to": node_id, "model": "original"})
+
+    # === Add shared proteins ===
+    try:
+        dpath = dataset_path(dataset)
+        # Load protein names
+        allnode_file = get_allnode_file(dataset)
+        drug_info_file = get_drug_info_file(dataset)
+        if allnode_file and drug_info_file:
+            drug_count = len(read_csv_rows(drug_info_file))
+            disease_feature = find_file_case_insensitive(dpath, ["DiseaseFeature.csv"])
+            disease_count = 0
+            if disease_feature:
+                with open(disease_feature, "r", encoding="utf-8-sig") as f:
+                    disease_count = sum(1 for _ in f)
+
+            all_nodes_list = []
+            with open(allnode_file, "r", encoding="utf-8-sig") as f:
+                for row in csv.reader(f):
+                    if len(row) >= 2:
+                        all_nodes_list.append(row[1].strip())
+
+            protein_names = all_nodes_list[drug_count + disease_count:]
+
+            # Load drug-protein associations
+            drpr_file = find_file_case_insensitive(dpath, ["DrugProteinAssociationNumber.csv"])
+            dipr_file = find_file_case_insensitive(dpath, ["ProteinDiseaseAssociationNumber.csv"])
+
+            drug_proteins = {}  # drug_idx -> set of protein_idx
+            disease_proteins = {}  # disease_idx -> set of protein_idx
+
+            if drpr_file:
+                with open(drpr_file, "r", encoding="utf-8-sig") as f:
+                    for row in csv.reader(f):
+                        if len(row) >= 2:
+                            try:
+                                di, pi = int(row[0]), int(row[1])
+                                drug_proteins.setdefault(di, set()).add(pi)
+                            except ValueError:
+                                pass
+
+            if dipr_file:
+                with open(dipr_file, "r", encoding="utf-8-sig") as f:
+                    for row in csv.reader(f):
+                        if len(row) >= 2:
+                            try:
+                                disi, pi = int(row[0]), int(row[1])
+                                disease_proteins.setdefault(disi, set()).add(pi)
+                            except ValueError:
+                                pass
+
+            # Find input index
+            predictor = _current_predictors.get(dataset)
+            if predictor:
+                if input_type == "drug":
+                    input_idx = predictor._find_index_by_name(predictor.drug_names, keyword)
+                    if input_idx is not None:
+                        input_proteins = drug_proteins.get(input_idx, set())
+                        # Add top 3 proteins
+                        for pi in list(input_proteins)[:3]:
+                            if pi < len(protein_names):
+                                pname = protein_names[pi]
+                                short_name = pname.replace("9606.ensp", "ENSP")[:15]
+                                pid = f"protein_{pi}"
+                                if pid not in node_ids:
+                                    nodes.append({
+                                        "id": pid,
+                                        "label": short_name,
+                                        "type": "protein",
+                                        "score": None,
+                                        "smiles": "",
+                                        "model_type": "protein"
+                                    })
+                                    node_ids.add(pid)
+                                edges.append({"from": center_id, "to": pid, "model": "protein"})
+                else:
+                    input_idx = predictor._find_index_by_name(predictor.disease_names, keyword)
+                    if input_idx is not None:
+                        input_proteins = disease_proteins.get(input_idx, set())
+                        for pi in list(input_proteins)[:3]:
+                            if pi < len(protein_names):
+                                pname = protein_names[pi]
+                                short_name = pname.replace("9606.ensp", "ENSP")[:15]
+                                pid = f"protein_{pi}"
+                                if pid not in node_ids:
+                                    nodes.append({
+                                        "id": pid,
+                                        "label": short_name,
+                                        "type": "protein",
+                                        "score": None,
+                                        "smiles": "",
+                                        "model_type": "protein"
+                                    })
+                                    node_ids.add(pid)
+                                edges.append({"from": center_id, "to": pid, "model": "protein"})
+    except Exception as e:
+        print(f"[Graph] Protein error: {e}")
 
     return {"nodes": nodes, "edges": edges}
 
@@ -1429,6 +1525,18 @@ def generate_drug():
             "smiles": [x["smiles"] for x in valid],
         }
     )
+
+
+@app.route("/protein_count", methods=["GET"])
+def protein_count():
+    dataset = clean_dataset(request.args.get("dataset", DEFAULT_DATASET))
+    dpath = dataset_path(dataset)
+    protein_file = find_file_case_insensitive(dpath, ["Protein_ESM.csv"])
+    count = 0
+    if protein_file and Path(protein_file).exists():
+        with open(protein_file, "r", encoding="utf-8-sig") as f:
+            count = sum(1 for _ in f)
+    return jsonify({"ok": True, "dataset": dataset, "count": count})
 
 
 @app.route("/reload", methods=["GET", "POST"])

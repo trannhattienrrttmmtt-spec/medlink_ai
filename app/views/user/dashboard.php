@@ -13,6 +13,9 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
 <script>document.documentElement.setAttribute('data-theme',localStorage.getItem('ml-theme')||'light')</script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vanta@0.5.24/dist/vanta.net.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="assets/css/medlink-dashboard.css">
@@ -106,7 +109,8 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
         </div>
 
         <!-- Hero -->
-        <section class="ml-hero fade-up">
+        <section class="ml-hero fade-up" id="heroSection" style="position:relative">
+            <div id="vantaBg" style="position:absolute;inset:0;border-radius:24px;overflow:hidden;z-index:0"></div>
             <span class="ml-badge"><i class="bi bi-stars"></i> AI-Powered Drug Discovery</span>
             <h3>Dự đoán mối liên kết thuốc - bệnh thông minh</h3>
            
@@ -120,8 +124,8 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
         <section class="ml-grid cards fade-up">
             <div class="ml-card"><div class="ml-card-head"><div><small>THUỐC</small><div class="ml-stat-number" id="sDrugs">—</div><small style="color:var(--green)"><i class="bi bi-graph-up"></i> Trong dataset</small></div><div class="ml-stat-icon">💊</div></div></div>
             <div class="ml-card"><div class="ml-card-head"><div><small>BỆNH</small><div class="ml-stat-number" id="sDiseases">—</div><small style="color:var(--green)"><i class="bi bi-graph-up"></i> Trong dataset</small></div><div class="ml-stat-icon">🧬</div></div></div>
+            <div class="ml-card"><div class="ml-card-head"><div><small>PROTEIN</small><div class="ml-stat-number" id="sProteins">—</div><small style="color:var(--green)"><i class="bi bi-graph-up"></i> Trong dataset</small></div><div class="ml-stat-icon">🔬</div></div></div>
             <div class="ml-card"><div class="ml-card-head"><div><small>MODELS</small><div class="ml-stat-number">2</div><small style="color:var(--text-muted)">Cải tiến + Gốc</small></div><div class="ml-stat-icon">🤖</div></div></div>
-            <div class="ml-card"><div class="ml-card-head"><div><small>TOP SCORE</small><div class="ml-stat-number" id="sTop">—</div><small style="color:var(--text-muted)">Độ tin cậy</small></div><div class="ml-stat-icon">⚡</div></div></div>
         </section>
 
         <!-- Quick Actions -->
@@ -168,12 +172,13 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
         <!-- Graph -->
         <section class="ml-card fade-up" id="graphCard" style="display:none;margin-bottom:20px">
             <div class="section-title"><div class="icon"><i class="bi bi-diagram-3-fill"></i></div><h3 id="graph-section">Mạng liên kết Drug-Disease</h3></div>
-            <div id="aiGraph"></div>
+            <div id="aiGraph" style="position:relative"></div>
             <div class="ai-legend">
-                <span><span class="ai-dot" style="background:#ec4899"></span>Input</span>
-                <span><span class="ai-dot" style="background:#10b981"></span>Model cải tiến</span>
-                <span><span class="ai-dot" style="background:#f59e0b"></span>Model gốc</span>
-                <span style="color:var(--text-dim)">— nét liền: cải tiến · - - nét đứt: gốc</span>
+                <span><span class="ai-dot" style="background:#ec4899"></span>◆ Input</span>
+                <span><span class="ai-dot" style="background:#10b981"></span>■ Cải tiến</span>
+                <span><span class="ai-dot" style="background:#f59e0b"></span>◇ Gốc</span>
+                <span><span class="ai-dot" style="background:#818cf8"></span>○ Protein</span>
+                <span style="color:var(--text-dim)">Kéo xoay · Scroll zoom · Click xem chi tiết</span>
             </div>
             <div id="nodeInfo" style="display:none;margin-top:12px;padding:14px;background:var(--primary-light);border-radius:12px;font-size:13px"></div>
         </section>
@@ -271,6 +276,8 @@ async function loadOpts(){
             const d2=await get(`/drug_options?dataset=${encodeURIComponent(ds)}&limit=700`);
             $('sDrugs').textContent=(d2.items||d2.options||d2.drugs||[]).length||'—';
         }
+        // Load protein count
+        try{const pInfo=await get(`/protein_count?dataset=${encodeURIComponent(ds)}`);$('sProteins').textContent=pInfo.count||'—'}catch(e){$('sProteins').textContent='—'}
         // Load diseases theo dataset sinh thuốc — giữ tick cũ khi chuyển dataset
         const gDs=$('gDataset').value;
         const dis=await get(`/disease_options?dataset=${encodeURIComponent(gDs)}&limit=700`);
@@ -339,8 +346,6 @@ $('btnPredict').onclick=async()=>{
         const data=await post('/predict_compare',{dataset:$('pDataset').value,input_type:$('pType').value,keyword:kw,top_k:+$('pTopK').value||9});
         renderTbl('boxCur',data.current);renderTbl('boxOrig',data.original);
         renderChart(data.current?.results,data.original?.results);drawGraph(data.graph);
-        const top=Math.max(...(data.current?.results||[]).map(r=>r.score||0),...(data.original?.results||[]).map(r=>r.score||0));
-        $('sTop').textContent=top>0?Math.round(top*100)+'%':'—';
         $('pStatus').innerHTML=data.ok?'✅ Hoàn thành':'❌ Lỗi';
         if(data.ok)fetch('index.php?action=save_history&input_type='+encodeURIComponent($('pType').value)+'&keyword='+encodeURIComponent(kw)+'&dataset='+encodeURIComponent($('pDataset').value));
     }catch(e){$('pStatus').innerHTML='❌ Lỗi kết nối';console.error(e)}
@@ -384,6 +389,190 @@ document.addEventListener('change',e=>{if(e.target.classList.contains('gsym-chec
 $('pDataset').onchange=loadOpts;$('pType').onchange=loadOpts;
 $('gDataset').onchange=loadOpts;
 loadOpts();
+
+// === 3D VANTA BACKGROUND ===
+try{
+    if(window.VANTA)VANTA.NET({el:'#vantaBg',mouseControls:true,touchControls:true,minHeight:200,scale:1,color:0x818cf8,backgroundColor:0x00000000,points:10,maxDistance:20,spacing:18,showDots:true});
+}catch(e){}
+
+// === OVERRIDE: 3D Graph with Three.js ===
+drawGraph = function(graph){
+    const container=$('aiGraph');
+    if(!graph||!graph.nodes?.length){
+        container.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted)"><i class="bi bi-diagram-3" style="font-size:2rem;margin-right:8px"></i>Chạy dự đoán để xem 3D graph</div>';
+        return;
+    }
+    container.innerHTML='';
+
+    const width=container.clientWidth||700, height=420;
+    const scene=new THREE.Scene();
+    const camera=new THREE.PerspectiveCamera(55,width/height,0.1,1000);
+    camera.position.set(0,20,80);
+
+    const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+    renderer.setSize(width,height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    container.appendChild(renderer.domElement);
+    renderer.domElement.style.borderRadius='16px';
+    renderer.domElement.style.cursor='grab';
+
+    const controls=new THREE.OrbitControls(camera,renderer.domElement);
+    controls.enableDamping=true;
+    controls.dampingFactor=0.05;
+    controls.autoRotate=true;
+    controls.autoRotateSpeed=0.8;
+
+    const colorMap={input:0xec4899,current:0x10b981,original:0xf59e0b,protein:0x818cf8};
+    const nodeMeshes=[];
+    const nodePos={};
+
+    // Create nodes - different shapes per type
+    graph.nodes.forEach((n,i)=>{
+        const isInput=n.model_type==='input';
+        const isCurrent=n.model_type==='current';
+        const isProtein=n.model_type==='protein';
+        const col=colorMap[n.model_type]||0x94a3b8;
+        let geo;
+
+        if(isInput){
+            geo=new THREE.IcosahedronGeometry(4,1);
+        }else if(isCurrent){
+            geo=new THREE.BoxGeometry(3.5,3.5,3.5);
+        }else if(isProtein){
+            // Protein = torus (donut shape)
+            geo=new THREE.TorusGeometry(2,0.8,12,24);
+        }else{
+            geo=new THREE.OctahedronGeometry(2.5);
+        }
+
+        const mat=new THREE.MeshPhongMaterial({color:col,emissive:col,emissiveIntensity:0.4,shininess:100,transparent:true,opacity:0.9});
+        const mesh=new THREE.Mesh(geo,mat);
+
+        if(isInput){
+            mesh.position.set(0,0,0);
+        }else{
+            const angle=(i/(graph.nodes.length-1))*Math.PI*2;
+            const radius=25+Math.random()*10;
+            const y=(Math.random()-0.5)*20;
+            mesh.position.set(Math.cos(angle)*radius, y, Math.sin(angle)*radius);
+        }
+
+        nodePos[n.id]=mesh.position.clone();
+        scene.add(mesh);
+        nodeMeshes.push({mesh,data:n});
+
+        // Glow ring for input
+        if(isInput){
+            const ringGeo=new THREE.RingGeometry(5,6,32);
+            const ringMat=new THREE.MeshBasicMaterial({color:0xec4899,transparent:true,opacity:0.3,side:THREE.DoubleSide});
+            const ring=new THREE.Mesh(ringGeo,ringMat);
+            ring.position.copy(mesh.position);
+            scene.add(ring);
+        }
+
+        // Text label with model type
+        const canvas=document.createElement('canvas');
+        canvas.width=512;canvas.height=80;
+        const ctx=canvas.getContext('2d');
+        ctx.fillStyle='#ffffff';
+        ctx.font='bold 18px Inter, sans-serif';
+        ctx.textAlign='center';
+        const lbl=(n.label||'').length>22?(n.label||'').slice(0,20)+'...':(n.label||'');
+        const scoreText=n.score?` ${Math.round(n.score*100)}%`:'';
+        const typeText=isInput?' [INPUT]':(isCurrent?' [CẢI TIẾN]':(isProtein?' [PROTEIN]':' [GỐC]'));
+        ctx.fillText(lbl+scoreText,256,30);
+        ctx.font='12px Inter';
+        ctx.fillStyle=isInput?'#f9a8d4':(isCurrent?'#6ee7b7':'#fcd34d');
+        ctx.fillText(typeText,256,55);
+        const tex=new THREE.CanvasTexture(canvas);
+        const spMat=new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false});
+        const sprite=new THREE.Sprite(spMat);
+        sprite.position.copy(mesh.position);
+        sprite.position.y+=5;
+        sprite.scale.set(18,3,1);
+        scene.add(sprite);
+    });
+
+    // Edges as visible lines connecting nodes
+    graph.edges.forEach(e=>{
+        const from=nodePos[e.from], to=nodePos[e.to];
+        if(!from||!to)return;
+        
+        // Create tube geometry for thicker visible lines
+        const direction=new THREE.Vector3().subVectors(to,from);
+        const length=direction.length();
+        const mid=new THREE.Vector3().addVectors(from,to).multiplyScalar(0.5);
+        
+        const col=e.model==='current'?0x10b981:(e.model==='protein'?0x818cf8:0xf59e0b);
+        
+        // Cylinder as edge
+        const cylGeo=new THREE.CylinderGeometry(0.15,0.15,length,6);
+        const cylMat=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.8});
+        const cyl=new THREE.Mesh(cylGeo,cylMat);
+        cyl.position.copy(mid);
+        cyl.lookAt(to);
+        cyl.rotateX(Math.PI/2);
+        scene.add(cyl);
+
+        // Arrow sphere at 70% point
+        const arrowPos=new THREE.Vector3().lerpVectors(from,to,0.7);
+        const arrowGeo=new THREE.SphereGeometry(0.6,8,8);
+        const arrowMat=new THREE.MeshBasicMaterial({color:col});
+        const arrow=new THREE.Mesh(arrowGeo,arrowMat);
+        arrow.position.copy(arrowPos);
+        scene.add(arrow);
+    });
+
+    // Ambient particles
+    const particleGeo=new THREE.BufferGeometry();
+    const pCount=200;
+    const positions=new Float32Array(pCount*3);
+    for(let i=0;i<pCount*3;i++)positions[i]=(Math.random()-0.5)*120;
+    particleGeo.setAttribute('position',new THREE.BufferAttribute(positions,3));
+    const pMat=new THREE.PointsMaterial({color:0x818cf8,size:0.3,transparent:true,opacity:0.4});
+    scene.add(new THREE.Points(particleGeo,pMat));
+
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff,0.5));
+    const dl=new THREE.DirectionalLight(0xffffff,0.8);
+    dl.position.set(30,50,30);
+    scene.add(dl);
+    const pl=new THREE.PointLight(0x818cf8,0.5,100);
+    pl.position.set(0,30,0);
+    scene.add(pl);
+
+    // Animate
+    let frame=0;
+    function animate(){
+        requestAnimationFrame(animate);
+        frame++;
+        controls.update();
+        renderer.render(scene,camera);
+    }
+    animate();
+
+    // Click to show info
+    const raycaster=new THREE.Raycaster();
+    const mouse=new THREE.Vector2();
+    renderer.domElement.addEventListener('click',ev=>{
+        const rect=renderer.domElement.getBoundingClientRect();
+        mouse.x=((ev.clientX-rect.left)/width)*2-1;
+        mouse.y=-((ev.clientY-rect.top)/height)*2+1;
+        raycaster.setFromCamera(mouse,camera);
+        const meshes=nodeMeshes.map(nm=>nm.mesh);
+        const hits=raycaster.intersectObjects(meshes);
+        if(hits.length>0){
+            const idx=meshes.indexOf(hits[0].object);
+            if(idx>=0){
+                const n=nodeMeshes[idx].data;
+                $('nodeInfo').style.display='block';
+                $('nodeInfo').innerHTML=`<b>${esc(n.label)}</b> <span class="ai-badge ${n.model_type==='current'?'ai-badge-cur':'ai-badge-orig'}">${n.model_type}</span> ${n.score?`· ${Math.round(n.score*100)}%`:''} ${n.smiles?`<br><code class="smiles">${esc(n.smiles)}</code>`:''}`;
+            }
+        }else{
+            $('nodeInfo').style.display='none';
+        }
+    });
+};
 </script>
 </body>
 </html>

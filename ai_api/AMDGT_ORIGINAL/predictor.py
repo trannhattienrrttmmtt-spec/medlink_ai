@@ -285,6 +285,9 @@ class AMDGTPredictor:
             self._cached_graphs[fold_index] = drdipr_graph.to(self.device)
         print(f"[{self.dataset}] cached graphs for {len(self._cached_graphs)} folds")
 
+        # Pre-compute toàn bộ score matrix
+        self._precompute_all()
+
     def _get_graph(self, fold_index=0):
         if fold_index in self._cached_graphs:
             return self._cached_graphs[fold_index]
@@ -293,6 +296,59 @@ class AMDGTPredictor:
         drdipr_graph = drdipr_graph.to(self.device)
         self._cached_graphs[fold_index] = drdipr_graph
         return drdipr_graph
+
+    def _precompute_all(self):
+        import time
+
+        cache_file = os.path.join(self.amdgt_dir, "Result", self.dataset, "score_matrix_original.npy")
+        if os.path.exists(cache_file):
+            self._score_matrix = np.load(cache_file)
+            print(f"[{self.dataset}] Loaded pre-computed matrix from {cache_file} ({self._score_matrix.shape})")
+            return
+
+        print(f"[{self.dataset}] Computing score matrix original (first time only)...")
+        start = time.time()
+
+        drdipr_graph = self._get_graph(0)
+        drug_num = self.args.drug_number
+        disease_num = self.args.disease_number
+
+        all_pairs = []
+        for d in range(drug_num):
+            for di in range(disease_num):
+                all_pairs.append([d, di])
+
+        x_all = torch.LongTensor(all_pairs).to(self.device)
+
+        all_probs = []
+        with torch.no_grad():
+            batch_size = 10000
+            for i in range(0, len(x_all), batch_size):
+                batch = x_all[i:i+batch_size]
+                batch_probs = []
+                for model in self.models:
+                    _, scores = model(
+                        self.drdr_graph,
+                        self.didi_graph,
+                        drdipr_graph,
+                        self.drug_feature,
+                        self.disease_feature,
+                        self.protein_feature,
+                        batch
+                    )
+                    probs = torch.softmax(scores / 2.0, dim=-1)[:, 1]
+                    batch_probs.append(probs)
+                avg = torch.stack(batch_probs, dim=0).mean(dim=0)
+                all_probs.append(avg)
+
+        full_probs = torch.cat(all_probs, dim=0).cpu().numpy()
+        self._score_matrix = full_probs.reshape(drug_num, disease_num)
+
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        np.save(cache_file, self._score_matrix)
+
+        elapsed = time.time() - start
+        print(f"[{self.dataset}] Done in {elapsed:.1f}s. Saved to {cache_file}")
 
     def _ensemble_predict_scores(self, drdipr_graph, x_input, temperature=2.0):
         all_probs = []
@@ -486,26 +542,15 @@ class AMDGTPredictor:
         if input_type not in ["drug", "disease"]:
             raise ValueError("input_type phải là drug hoặc disease")
 
-        if fold_index < 0 or fold_index >= len(self.data["X_train"]):
-            fold_index = 0
-
-        x_train = self.data["X_train"][fold_index]
-        drdipr_graph, _ = dgl_heterograph(self.data, x_train, self.args)
-        drdipr_graph = drdipr_graph.to(self.device)
-
         drug_num = self.args.drug_number
         disease_num = self.args.disease_number
 
         if input_type == "drug":
             drug_idx = self._find_index_by_name(self.drug_names, keyword)
-
             if drug_idx is None:
                 raise ValueError(f"Không tìm thấy thuốc: {keyword}")
 
-            pairs = [[drug_idx, d] for d in range(disease_num)]
-            x_input = torch.LongTensor(pairs).to(self.device)
-
-            probs = self._ensemble_predict_scores(drdipr_graph, x_input)
+            probs = self._score_matrix[drug_idx, :]
             top_indices = np.argsort(-probs)[:top_k]
             display_scores = normalize_top_scores(probs, top_indices)
 
@@ -515,14 +560,10 @@ class AMDGTPredictor:
             ]
 
         disease_idx = self._find_index_by_name(self.disease_names, keyword)
-
         if disease_idx is None:
             raise ValueError(f"Không tìm thấy bệnh: {keyword}")
 
-        pairs = [[d, disease_idx] for d in range(drug_num)]
-        x_input = torch.LongTensor(pairs).to(self.device)
-
-        probs = self._ensemble_predict_scores(drdipr_graph, x_input)
+        probs = self._score_matrix[:, disease_idx]
         top_indices = np.argsort(-probs)[:top_k]
         display_scores = normalize_top_scores(probs, top_indices)
 
