@@ -38,11 +38,16 @@ if errorlevel 1 (
 echo [3/4] Checking database...
 "C:\xampp\mysql\bin\mysql.exe" -u root -e "USE medlink_ai" 2>nul
 if errorlevel 1 (
-    echo       Creating database...
+    echo       Database not found. Importing database.sql...
     "C:\xampp\mysql\bin\mysql.exe" -u root < "%~dp0database.sql"
-    echo       Database imported!
+    if errorlevel 1 (
+        echo       [ERROR] Database import failed.
+        pause
+        exit /b
+    )
+    echo       Database imported.
 ) else (
-    echo       Database OK.
+    echo       Database OK. Skipping import to keep existing data.
 )
 
 :: Start Flask API
@@ -50,7 +55,9 @@ echo [4/4] Starting AI API server...
 echo.
 echo ============================================
 echo   Web: http://localhost/medlink_ai/public/index.php
+echo   phpMyAdmin: http://localhost/phpmyadmin
 echo   API: http://127.0.0.1:5000
+echo   Reset DB: run RESET_DATABASE.bat
 echo ============================================
 echo.
 echo Loading AI models... (wait 1-2 minutes)

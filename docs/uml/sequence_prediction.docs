@@ -1,0 +1,44 @@
+@startuml
+title MedLink AI - Prediction Sequence
+
+actor User
+participant "Browser" as Browser
+participant "public/index.php" as Router
+participant "PredictionController" as Controller
+participant "HistoryModel" as History
+participant "Flask API\n/app.py" as API
+participant "Predictor" as Predictor
+participant "AMDGT Model" as Model
+database "MariaDB" as DB
+
+User -> Browser : Submit prediction form
+Browser -> Router : POST index.php?action=predict
+Router -> Controller : predict()
+
+Controller -> Controller : Validate input_type,\ndataset, model_type, top_k
+
+alt current model
+  Controller -> API : POST /predict\nJSON payload
+  API -> Predictor : predict(payload)
+  Predictor -> Model : load features/checkpoint\nscore candidates
+  Model --> Predictor : scores
+  Predictor --> API : ranked results + graph
+  API --> Controller : JSON success
+else original model
+  Controller -> API : POST /predict\nmodel_type=original
+  API -> Predictor : use AMDGT_ORIGINAL
+  Predictor --> API : ranked results + graph
+  API --> Controller : JSON success
+else compare
+  Controller -> API : POST /predict current
+  API --> Controller : current results
+  Controller -> API : POST /predict original
+  API --> Controller : original results
+end
+
+Controller -> History : save user query
+History -> DB : INSERT history
+Controller -> Browser : Render predict.php
+Browser -> User : Show table + graph
+
+@enduml

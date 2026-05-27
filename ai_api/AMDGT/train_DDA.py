@@ -86,7 +86,15 @@ if __name__ == '__main__':
 
         for epoch in range(args.epochs):
             model.train()
-            _, train_score = model(drdr_graph, didi_graph, drdipr_graph, drug_feature, disease_feature, protein_feature, X_train)
+            _, train_score = model(
+                drdr_graph,
+                didi_graph,
+                drdipr_graph,
+                drug_feature,
+                disease_feature,
+                protein_feature,
+                X_train
+            )
             train_loss = cross_entropy(train_score, torch.flatten(Y_train))
             optimizer.zero_grad()
             train_loss.backward()
@@ -94,7 +102,15 @@ if __name__ == '__main__':
 
             with torch.no_grad():
                 model.eval()
-                dr_representation, test_score = model(drdr_graph, didi_graph, drdipr_graph, drug_feature, disease_feature, protein_feature, X_test)
+                dr_representation, test_score = model(
+                    drdr_graph,
+                    didi_graph,
+                    drdipr_graph,
+                    drug_feature,
+                    disease_feature,
+                    protein_feature,
+                    X_test
+                )
 
             test_prob = fn.softmax(test_score, dim=-1)
             test_score = torch.argmax(test_score, dim=-1)
@@ -129,6 +145,3 @@ if __name__ == '__main__':
     AUPR_mean = np.mean(AUPRs)
     AUPR_std = np.std(AUPRs)
     print('Mean AUPR:', AUPR_mean, '(', AUPR_std, ')')
-
-
-

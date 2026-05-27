@@ -106,6 +106,41 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
     background: var(--amber-light);
     color: var(--amber);
 }
+.ai-protein-panel {
+    margin-top: 20px;
+    padding: 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(129, 140, 248, 0.28);
+    background: linear-gradient(135deg, rgba(129, 140, 248, 0.10), rgba(99, 102, 241, 0.05));
+}
+.ai-protein-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+    font-weight: 800;
+    margin-bottom: 12px;
+}
+.ai-protein-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.ai-protein-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    background: rgba(129, 140, 248, 0.14);
+    border: 1px solid rgba(129, 140, 248, 0.28);
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 700;
+}
+.ai-protein-chip i {
+    color: #818cf8;
+}
 .ai-pct {
     font-weight: 800;
     font-size: 14px;
@@ -432,11 +467,11 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
         </section>
 
         <!-- Stats -->
-        <section class="ml-grid cards fade-up" style="animation-delay: 0.1s">
-            <div class="ml-card"><div class="ml-card-head"><div><small>THUỐC</small><div class="ml-stat-number" id="sDrugs">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Hoạt chất</small></div><div class="ml-stat-icon">💊</div></div></div>
-            <div class="ml-card"><div class="ml-card-head"><div><small>BỆNH</small><div class="ml-stat-number" id="sDiseases">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Chỉ dấu</small></div><div class="ml-stat-icon">🧬</div></div></div>
-            <div class="ml-card"><div class="ml-card-head"><div><small>PROTEIN</small><div class="ml-stat-number" id="sProteins">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Đích sinh học</small></div><div class="ml-stat-icon">🔬</div></div></div>
-            <div class="ml-card"><div class="ml-card-head"><div><small>MODELS</small><div class="ml-stat-number">2</div><small style="color:var(--text-muted); font-weight:700;">Cải tiến + Gốc AMDGT</small></div><div class="ml-stat-icon">🤖</div></div></div>
+        <section class="ml-grid cards ml-stats-grid fade-up" style="animation-delay: 0.1s">
+            <div class="ml-card ml-stat-card"><div class="ml-card-head"><div><small>THUỐC</small><div class="ml-stat-number" id="sDrugs">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Hoạt chất</small></div><div class="ml-stat-icon">💊</div></div></div>
+            <div class="ml-card ml-stat-card"><div class="ml-card-head"><div><small>BỆNH</small><div class="ml-stat-number" id="sDiseases">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Chỉ dấu</small></div><div class="ml-stat-icon">🧬</div></div></div>
+            <div class="ml-card ml-stat-card"><div class="ml-card-head"><div><small>PROTEIN</small><div class="ml-stat-number" id="sProteins">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Đích sinh học</small></div><div class="ml-stat-icon">🔬</div></div></div>
+            <div class="ml-card ml-stat-card"><div class="ml-card-head"><div><small>MODELS</small><div class="ml-stat-number">2</div><small style="color:var(--text-muted); font-weight:700;">Cải tiến + Gốc AMDGT</small></div><div class="ml-stat-icon">🤖</div></div></div>
         </section>
 
         <!-- Dynamic Content Grid -->
@@ -592,6 +627,7 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                         <div id="boxOrig" style="margin-top:14px"></div>
                     </div>
                 </div>
+                <div id="proteinPanel" class="ai-protein-panel" style="display:none"></div>
             </div>
             <div id="tabChart" class="ai-panel">
                 <div style="background:var(--bg-soft); padding: 20px; border-radius: 16px; border: 1px solid var(--line);">
@@ -751,6 +787,46 @@ function renderTbl(id,pack){
     </table>`;
 }
 
+function renderProteinPanel(graph){
+    const panel=$('proteinPanel');
+    if(!panel)return;
+
+    const nodes=(graph?.nodes||[])
+        .filter(n=>n.model_type==='protein'||n.type==='protein');
+    const unique=[];
+    const seen=new Set();
+
+    nodes.forEach(n=>{
+        const key=n.id||n.label;
+        if(!key||seen.has(key))return;
+        seen.add(key);
+        unique.push(n);
+    });
+
+    if(!unique.length){
+        panel.style.display='none';
+        panel.innerHTML='';
+        return;
+    }
+
+    panel.style.display='block';
+    panel.innerHTML=`
+        <div class="ai-protein-head">
+            <i class="bi bi-diagram-2-fill"></i>
+            <span>Protein liên quan</span>
+            <small style="color:var(--text-muted);font-weight:700;">${unique.length} protein được lấy từ mạng liên kết</small>
+        </div>
+        <div class="ai-protein-grid">
+            ${unique.map((n,i)=>`
+                <span class="ai-protein-chip" title="${esc(n.id||'')}">
+                    <i class="bi bi-record-circle-fill"></i>
+                    ${i+1}. ${esc(n.label||n.name||n.id)}
+                </span>
+            `).join('')}
+        </div>
+    `;
+}
+
 // Chart rendering
 function renderChart(cur,orig){
     if(chartInst)chartInst.destroy();
@@ -797,6 +873,7 @@ $('btnPredict').onclick=async()=>{
     $('graphCard').style.display='block';
     $('boxCur').innerHTML=skeleton(4);
     $('boxOrig').innerHTML=skeleton(4);
+    renderProteinPanel(null);
     
     // Smooth scroll to results
     setTimeout(() => {
@@ -807,6 +884,7 @@ $('btnPredict').onclick=async()=>{
         const data=await post('/predict_compare',{dataset:$('pDataset').value,input_type:$('pType').value,keyword:kw,top_k:+$('pTopK').value||9});
         renderTbl('boxCur',data.current);
         renderTbl('boxOrig',data.original);
+        renderProteinPanel(data.graph);
         renderChart(data.current?.results,data.original?.results);
         drawGraph(data.graph);
         

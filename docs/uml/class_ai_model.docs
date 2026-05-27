@@ -1,0 +1,68 @@
+@startuml
+title MedLink AI - AI Model Module Diagram
+
+package "ai_api" {
+  class "app.py\nFlask API" as App {
+    +GET /health
+    +GET /drugs
+    +GET /diseases
+    +POST /predict
+    +POST /generate_drug
+  }
+
+  class Predictor {
+    +load_drugs(dataset)
+    +load_diseases(dataset)
+    +predict(payload)
+    +build_graph(...)
+  }
+}
+
+package "AMDGT" {
+  class "data_preprocess.py" as Preprocess {
+    +get_data(args)
+    +data_processing(data, args)
+    +add_topology_features(data, args)
+    +dgl_similarity_graph(data, args)
+    +dgl_heterograph(data, drdi, args)
+  }
+
+  class "AMNTDDA" as AMNTDDA {
+    +forward(drdr_graph, didi_graph, drdipr_graph,\n drug_feature, disease_feature,\n protein_feature, sample)
+    -drug_linear
+    -disease_linear
+    -protein_linear
+    -HGTConv layers
+    -topology gates
+    -TransformerEncoder
+    -MLP classifier
+  }
+
+  class "GraphTransformer" as GT {
+    +forward(graph)
+  }
+
+  class "train_DDA_csv.py" as Train {
+    +parse args
+    +10-fold training
+    +save CSV
+    +save best checkpoints
+  }
+}
+
+package "AMDGT_ORIGINAL" {
+  class "Original AMNTDDA" as Original
+}
+
+App --> Predictor
+Predictor --> AMNTDDA
+Predictor --> Original
+Train --> Preprocess
+Train --> AMNTDDA
+AMNTDDA --> GT : drug similarity
+AMNTDDA --> GT : disease similarity
+AMNTDDA --> "DGL HGTConv" : heterogeneous topology
+Preprocess --> "DGL graph"
+Preprocess --> "CSV datasets"
+
+@enduml

@@ -1,0 +1,43 @@
+@startuml
+title MedLink AI - Use Case Diagram
+
+left to right direction
+
+actor "Guest" as Guest
+actor "User" as User
+
+rectangle "MedLink AI Web Application" {
+  usecase "Register" as UC_Register
+  usecase "Login" as UC_Login
+  usecase "View Dashboard" as UC_Dashboard
+  usecase "Predict Drug -> Disease" as UC_DrugDisease
+  usecase "Predict Disease -> Drug" as UC_DiseaseDrug
+  usecase "Predict From Symptom" as UC_Symptom
+  usecase "Compare Current vs Original Model" as UC_Compare
+  usecase "View Graph Visualization" as UC_Graph
+  usecase "Generate New Drug Candidate" as UC_Generate
+  usecase "View Search History" as UC_History
+  usecase "Delete History" as UC_DeleteHistory
+  usecase "Logout" as UC_Logout
+}
+
+Guest --> UC_Register
+Guest --> UC_Login
+
+User --> UC_Dashboard
+User --> UC_DrugDisease
+User --> UC_DiseaseDrug
+User --> UC_Symptom
+User --> UC_Compare
+User --> UC_Graph
+User --> UC_Generate
+User --> UC_History
+User --> UC_DeleteHistory
+User --> UC_Logout
+
+UC_DrugDisease ..> UC_Graph : includes
+UC_DiseaseDrug ..> UC_Graph : includes
+UC_Compare ..> UC_DrugDisease : extends
+UC_Compare ..> UC_DiseaseDrug : extends
+
+@enduml

@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from model import gt_net_drug, gt_net_disease
 
-device = torch.device('cuda')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class AMNTDDA(nn.Module):
@@ -14,13 +14,30 @@ class AMNTDDA(nn.Module):
 
         self.args = args
 
-        # 6-edge + topology degree feature:
-        # drugfeature: 300 + 1 = 301
-        # diseasefeature: 64 + 1 = 65
-        # proteinfeature: 320 + 1 = 321
-        self.drug_linear = nn.Linear(301, args.hgt_in_dim)
-        self.disease_linear = nn.Linear(65, args.hgt_in_dim)
-        self.protein_linear = nn.Linear(321, args.hgt_in_dim)
+        topology_dim = getattr(args, 'topology_feature_dim', 8)
+        drug_feature_dim = getattr(args, 'drug_feature_dim', 300 + topology_dim)
+        disease_feature_dim = getattr(args, 'disease_feature_dim', 64 + topology_dim)
+        protein_feature_dim = getattr(args, 'protein_feature_dim', 320 + topology_dim)
+
+        self.topology_dim = topology_dim
+
+        self.drug_linear = nn.Linear(drug_feature_dim, args.hgt_in_dim)
+        self.disease_linear = nn.Linear(disease_feature_dim, args.hgt_in_dim)
+        self.protein_linear = nn.Linear(protein_feature_dim, args.hgt_in_dim)
+
+        self.drug_topology_linear = nn.Sequential(
+            nn.Linear(topology_dim, args.gt_out_dim),
+            nn.ReLU(),
+            nn.Dropout(args.dropout),
+            nn.Linear(args.gt_out_dim, args.gt_out_dim)
+        )
+
+        self.disease_topology_linear = nn.Sequential(
+            nn.Linear(topology_dim, args.gt_out_dim),
+            nn.ReLU(),
+            nn.Dropout(args.dropout),
+            nn.Linear(args.gt_out_dim, args.gt_out_dim)
+        )
 
         self.gt_drug = gt_net_drug.GraphTransformer(
             device,
@@ -43,7 +60,7 @@ class AMNTDDA(nn.Module):
         )
 
         num_node_types = 3
-        num_edge_types = 6
+        num_edge_types = 9
 
         self.hgt_dgl = dgl.nn.pytorch.conv.HGTConv(
             args.hgt_in_dim,
@@ -77,16 +94,27 @@ class AMNTDDA(nn.Module):
         self.drug_hgt_norm = nn.LayerNorm(args.gt_out_dim)
         self.disease_hgt_norm = nn.LayerNorm(args.gt_out_dim)
 
+        self.drug_topology_norm = nn.LayerNorm(args.gt_out_dim)
+        self.disease_topology_norm = nn.LayerNorm(args.gt_out_dim)
+
         self.drug_fusion_norm = nn.LayerNorm(args.gt_out_dim)
         self.disease_fusion_norm = nn.LayerNorm(args.gt_out_dim)
 
         # Gate học được để điều chỉnh ảnh hưởng topology
-        self.drug_topology_gate = nn.Parameter(torch.tensor(-1.0))
-        self.disease_topology_gate = nn.Parameter(torch.tensor(-1.0))
+        self.drug_topology_gate = nn.Sequential(
+            nn.Linear(args.gt_out_dim * 3, args.gt_out_dim),
+            nn.Sigmoid()
+        )
+
+        self.disease_topology_gate = nn.Sequential(
+            nn.Linear(args.gt_out_dim * 3, args.gt_out_dim),
+            nn.Sigmoid()
+        )
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=args.gt_out_dim,
-            nhead=args.tr_head
+            nhead=args.tr_head,
+            batch_first=True
         )
 
         self.drug_trans = nn.TransformerEncoder(
@@ -141,6 +169,9 @@ class AMNTDDA(nn.Module):
         di_sim = self.disease_sim_norm(di_sim)
 
         # Heterogeneous topology branch
+        drug_topology_raw = drug_feature[:, -self.topology_dim:]
+        disease_topology_raw = disease_feature[:, -self.topology_dim:]
+
         drug_feature = self.drug_linear(drug_feature)
         disease_feature = self.disease_linear(disease_feature)
         protein_feature = self.protein_linear(protein_feature)
@@ -184,15 +215,25 @@ class AMNTDDA(nn.Module):
         dr_hgt = self.drug_hgt_norm(dr_hgt)
         di_hgt = self.disease_hgt_norm(di_hgt)
 
-        # Gate fusion similarity + topology
-        drug_gate = torch.sigmoid(self.drug_topology_gate)
-        disease_gate = torch.sigmoid(self.disease_topology_gate)
+        dr_topology = self.drug_topology_linear(drug_topology_raw)
+        di_topology = self.disease_topology_linear(disease_topology_raw)
 
-        dr_hgt = drug_gate * dr_hgt + (1.0 - drug_gate) * dr_sim
-        di_hgt = disease_gate * di_hgt + (1.0 - disease_gate) * di_sim
+        dr_topology = self.drug_topology_norm(dr_topology)
+        di_topology = self.disease_topology_norm(di_topology)
 
-        dr_hgt = self.drug_fusion_norm(dr_hgt)
-        di_hgt = self.disease_fusion_norm(di_hgt)
+        dr_hgt = self.drug_fusion_norm(dr_hgt + dr_topology)
+        di_hgt = self.disease_fusion_norm(di_hgt + di_topology)
+
+        # Per-dimension gate learns how much topology to mix with similarity.
+        drug_gate = self.drug_topology_gate(
+            torch.cat((dr_sim, dr_hgt, dr_topology), dim=1)
+        )
+        disease_gate = self.disease_topology_gate(
+            torch.cat((di_sim, di_hgt, di_topology), dim=1)
+        )
+
+        dr_hgt = self.drug_fusion_norm(drug_gate * dr_hgt + (1.0 - drug_gate) * dr_sim)
+        di_hgt = self.disease_fusion_norm(disease_gate * di_hgt + (1.0 - disease_gate) * di_sim)
 
         # Stack 2 nhánh
         dr = torch.stack((dr_sim, dr_hgt), dim=1)

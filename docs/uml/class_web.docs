@@ -1,0 +1,74 @@
+@startuml
+title MedLink AI - PHP MVC Class Diagram
+
+skinparam classAttributeIconSize 0
+
+class "public/index.php" as Router {
+  +route action
+}
+
+class AuthController {
+  +login()
+  +doLogin()
+  +register()
+  +doRegister()
+  +logout()
+}
+
+class PredictionController {
+  +dashboard()
+  +predict()
+  +predictNewDiseaseProtein()
+  +generateDrug()
+  +history()
+  +deleteHistory()
+  +deleteAllHistory()
+  -callAiApi(url, payload, label)
+  -normalizeResults(results, sourceLabel)
+  -saveAndShow(inputType, keyword, results, graph, dataset, modelType, topK)
+}
+
+class BaseModel {
+  #pdo
+  +__construct()
+}
+
+class UserModel {
+  +findByUsername(username)
+  +create(data)
+}
+
+class HistoryModel {
+  +recent(userId, limit)
+  +add(userId, inputType, keyword, dataset)
+  +delete(userId, id)
+  +deleteAll(userId)
+}
+
+class PredictionModel {
+}
+
+class DrugModel {
+}
+
+class DiseaseModel {
+}
+
+class "MariaDB\nmedlink_ai" as DB <<database>> {
+}
+
+Router --> AuthController
+Router --> PredictionController
+
+UserModel --|> BaseModel
+HistoryModel --|> BaseModel
+PredictionModel --|> BaseModel
+DrugModel --|> BaseModel
+DiseaseModel --|> BaseModel
+
+AuthController --> UserModel
+PredictionController --> HistoryModel
+PredictionController --> PredictionModel
+BaseModel --> DB
+
+@enduml

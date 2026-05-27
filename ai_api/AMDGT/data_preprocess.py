@@ -118,6 +118,160 @@ def add_degree_topology_feature(data, args):
     return data
 
 
+def normalize_vector(x):
+    x = x.astype(np.float32)
+    max_val = np.max(x)
+
+    if max_val <= 0:
+        return x
+
+    return x / max_val
+
+
+def build_topology_index(data, args):
+    drug_diseases = [set() for _ in range(args.drug_number)]
+    drug_proteins = [set() for _ in range(args.drug_number)]
+    disease_drugs = [set() for _ in range(args.disease_number)]
+    disease_proteins = [set() for _ in range(args.disease_number)]
+    protein_drugs = [set() for _ in range(args.protein_number)]
+    protein_diseases = [set() for _ in range(args.protein_number)]
+
+    drdi = np.asarray(data['drdi']).astype(int)
+    drpr = np.asarray(data['drpr']).astype(int)
+    dipr = np.asarray(data['dipr']).astype(int)
+
+    for drug_id, disease_id in drdi[:, :2]:
+        if 0 <= drug_id < args.drug_number and 0 <= disease_id < args.disease_number:
+            drug_diseases[drug_id].add(disease_id)
+            disease_drugs[disease_id].add(drug_id)
+
+    for drug_id, protein_id in drpr[:, :2]:
+        if 0 <= drug_id < args.drug_number and 0 <= protein_id < args.protein_number:
+            drug_proteins[drug_id].add(protein_id)
+            protein_drugs[protein_id].add(drug_id)
+
+    for disease_id, protein_id in dipr[:, :2]:
+        if 0 <= disease_id < args.disease_number and 0 <= protein_id < args.protein_number:
+            disease_proteins[disease_id].add(protein_id)
+            protein_diseases[protein_id].add(disease_id)
+
+    return {
+        'drug_diseases': drug_diseases,
+        'drug_proteins': drug_proteins,
+        'disease_drugs': disease_drugs,
+        'disease_proteins': disease_proteins,
+        'protein_drugs': protein_drugs,
+        'protein_diseases': protein_diseases,
+    }
+
+
+def make_topology_features(primary_degree, secondary_degree, two_hop_cross, two_hop_same):
+    total_degree = primary_degree + secondary_degree
+    denominator = np.maximum(total_degree, 1.0)
+
+    return np.stack(
+        (
+            normalize_vector(total_degree),
+            normalize_vector(np.log1p(total_degree)),
+            normalize_vector(primary_degree),
+            normalize_vector(secondary_degree),
+            primary_degree / denominator,
+            secondary_degree / denominator,
+            normalize_vector(two_hop_cross),
+            normalize_vector(two_hop_same),
+        ),
+        axis=1
+    ).astype(np.float32)
+
+
+def add_topology_features(data, args):
+    topology = build_topology_index(data, args)
+
+    drug_primary = np.array([len(nodes) for nodes in topology['drug_diseases']], dtype=np.float32)
+    drug_secondary = np.array([len(nodes) for nodes in topology['drug_proteins']], dtype=np.float32)
+    disease_primary = np.array([len(nodes) for nodes in topology['disease_drugs']], dtype=np.float32)
+    disease_secondary = np.array([len(nodes) for nodes in topology['disease_proteins']], dtype=np.float32)
+    protein_primary = np.array([len(nodes) for nodes in topology['protein_drugs']], dtype=np.float32)
+    protein_secondary = np.array([len(nodes) for nodes in topology['protein_diseases']], dtype=np.float32)
+
+    drug_two_hop_cross = np.zeros(args.drug_number, dtype=np.float32)
+    drug_two_hop_same = np.zeros(args.drug_number, dtype=np.float32)
+    for drug_id in range(args.drug_number):
+        cross_diseases = set()
+        same_drugs = set()
+
+        for protein_id in topology['drug_proteins'][drug_id]:
+            cross_diseases.update(topology['protein_diseases'][protein_id])
+            same_drugs.update(topology['protein_drugs'][protein_id])
+
+        for disease_id in topology['drug_diseases'][drug_id]:
+            same_drugs.update(topology['disease_drugs'][disease_id])
+
+        cross_diseases.difference_update(topology['drug_diseases'][drug_id])
+        same_drugs.discard(drug_id)
+
+        drug_two_hop_cross[drug_id] = len(cross_diseases)
+        drug_two_hop_same[drug_id] = len(same_drugs)
+
+    disease_two_hop_cross = np.zeros(args.disease_number, dtype=np.float32)
+    disease_two_hop_same = np.zeros(args.disease_number, dtype=np.float32)
+    for disease_id in range(args.disease_number):
+        cross_drugs = set()
+        same_diseases = set()
+
+        for protein_id in topology['disease_proteins'][disease_id]:
+            cross_drugs.update(topology['protein_drugs'][protein_id])
+            same_diseases.update(topology['protein_diseases'][protein_id])
+
+        for drug_id in topology['disease_drugs'][disease_id]:
+            same_diseases.update(topology['drug_diseases'][drug_id])
+
+        cross_drugs.difference_update(topology['disease_drugs'][disease_id])
+        same_diseases.discard(disease_id)
+
+        disease_two_hop_cross[disease_id] = len(cross_drugs)
+        disease_two_hop_same[disease_id] = len(same_diseases)
+
+    protein_two_hop_cross = np.zeros(args.protein_number, dtype=np.float32)
+    protein_two_hop_same = np.zeros(args.protein_number, dtype=np.float32)
+    for protein_id in range(args.protein_number):
+        cross_nodes = set()
+        same_proteins = set()
+
+        for drug_id in topology['protein_drugs'][protein_id]:
+            cross_nodes.update(topology['drug_diseases'][drug_id])
+            same_proteins.update(topology['drug_proteins'][drug_id])
+
+        for disease_id in topology['protein_diseases'][protein_id]:
+            cross_nodes.update(topology['disease_drugs'][disease_id])
+            same_proteins.update(topology['disease_proteins'][disease_id])
+
+        same_proteins.discard(protein_id)
+
+        protein_two_hop_cross[protein_id] = len(cross_nodes)
+        protein_two_hop_same[protein_id] = len(same_proteins)
+
+    drug_topology = make_topology_features(drug_primary, drug_secondary, drug_two_hop_cross, drug_two_hop_same)
+    disease_topology = make_topology_features(disease_primary, disease_secondary, disease_two_hop_cross, disease_two_hop_same)
+    protein_topology = make_topology_features(protein_primary, protein_secondary, protein_two_hop_cross, protein_two_hop_same)
+
+    data['drugfeature'] = np.concatenate((data['drugfeature'], drug_topology), axis=1)
+    data['diseasefeature'] = np.concatenate((data['diseasefeature'], disease_topology), axis=1)
+    data['proteinfeature'] = np.concatenate((data['proteinfeature'], protein_topology), axis=1)
+
+    args.topology_feature_dim = drug_topology.shape[1]
+    args.drug_feature_dim = data['drugfeature'].shape[1]
+    args.disease_feature_dim = data['diseasefeature'].shape[1]
+    args.protein_feature_dim = data['proteinfeature'].shape[1]
+
+    print("Added stronger topology features:")
+    print("drugfeature shape   :", data['drugfeature'].shape)
+    print("diseasefeature shape:", data['diseasefeature'].shape)
+    print("proteinfeature shape:", data['proteinfeature'].shape)
+
+    return data
+
+
 def get_data(args):
     data = dict()
 
@@ -230,7 +384,7 @@ def data_processing(data, args):
     data['all_label_p'] = label_p
 
     # Thêm topology feature degree nhẹ
-    data = add_degree_topology_feature(data, args)
+    data = add_topology_features(data, args)
 
     return data
 
@@ -309,15 +463,18 @@ def dgl_similarity_graph(data, args):
 
 def dgl_heterograph(data, drdi, args):
     """
-    AMDGT + 6-edge + topology degree feature.
+    AMDGT + 9-edge + enriched topology feature.
 
-    6 edge type:
+    9 edge type:
     1. drug -> disease
     2. disease -> drug
     3. drug -> protein
     4. protein -> drug
     5. disease -> protein
     6. protein -> disease
+    7. drug self edge
+    8. disease self edge
+    9. protein self edge
     """
 
     drdi = np.asarray(drdi).astype(int)
@@ -339,6 +496,10 @@ def dgl_heterograph(data, drdi, args):
     dipr_src = torch.LongTensor(dipr[:, 0])
     dipr_dst = torch.LongTensor(dipr[:, 1])
 
+    drug_self = torch.arange(args.drug_number, dtype=torch.long)
+    disease_self = torch.arange(args.disease_number, dtype=torch.long)
+    protein_self = torch.arange(args.protein_number, dtype=torch.long)
+
     node_dict = {
         'drug': args.drug_number,
         'disease': args.disease_number,
@@ -357,6 +518,9 @@ def dgl_heterograph(data, drdi, args):
         # Disease <-> Protein
         ('disease', 'disease_protein', 'protein'): (dipr_src, dipr_dst),
         ('protein', 'protein_disease', 'disease'): (dipr_dst, dipr_src),
+        ('drug', 'drug_self', 'drug'): (drug_self, drug_self),
+        ('disease', 'disease_self', 'disease'): (disease_self, disease_self),
+        ('protein', 'protein_self', 'protein'): (protein_self, protein_self),
     }
 
     data['feature_dict'] = {
