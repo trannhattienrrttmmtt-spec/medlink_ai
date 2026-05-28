@@ -141,6 +141,62 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
 .ai-protein-chip i {
     color: #818cf8;
 }
+.ai-structure-preview {
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--bg-soft);
+}
+.ai-structure-preview img {
+    width: 150px;
+    height: 150px;
+    object-fit: contain;
+    display: block;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: #fff;
+    padding: 8px;
+    margin-top: 8px;
+}
+.ai-protein-ribbon {
+    width: 100%;
+    max-width: 360px;
+    height: 110px;
+    display: block;
+    margin-top: 8px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background:
+        radial-gradient(circle at 22% 24%, rgba(236,72,153,.18), transparent 28%),
+        radial-gradient(circle at 78% 30%, rgba(99,102,241,.16), transparent 26%),
+        var(--card);
+}
+.ai-structure-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+.ai-structure-actions a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 900;
+    text-decoration: none;
+}
+.ai-protein-chip {
+    cursor: pointer;
+}
+.ai-protein-detail {
+    margin-top: 12px;
+}
 .dataset-summary-card {
     margin-bottom: 24px;
     overflow: hidden;
@@ -1223,6 +1279,66 @@ const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const molImg=smi=>smi?`${API}/render_smiles?smi=${encodeURIComponent(smi)}&w=250&h=250`:'';
 let chartInst=null;
 
+function proteinRibbonSvg(seedValue){
+    const seq=String(seedValue||'');
+    let seed=0;
+    for(let i=0;i<seq.length;i++)seed=(seed+seq.charCodeAt(i)*(i+3))%9973;
+    const points=[];
+    for(let i=0;i<9;i++){
+        const x=12+i*34;
+        const y=55+Math.sin((i+seed%7)*1.05)*28;
+        points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+    const circles=points.map((p,i)=>{
+        const [x,y]=p.split(',');
+        const color=i%3===0?'#ec4899':(i%3===1?'#6366f1':'#10b981');
+        return `<circle cx="${x}" cy="${y}" r="${i%2?5:7}" fill="${color}" opacity=".92"/>`;
+    }).join('');
+    return `<svg class="ai-protein-ribbon" viewBox="0 0 300 110" preserveAspectRatio="none">
+        <path d="M${points.join(' L')}" fill="none" stroke="#ec4899" stroke-width="8" stroke-linecap="round" opacity=".22"/>
+        <path d="M${points.join(' L')}" fill="none" stroke="#6366f1" stroke-width="3.2" stroke-linecap="round"/>
+        ${circles}
+    </svg>`;
+}
+
+function structureDetailHtml(node){
+    if(!node)return '';
+    const type=node.group||node.type||node.model_type||'';
+    const name=node.label||node.name||node.id||'';
+    const smiles=node.smiles||node.drug_smiles||'';
+    const proteinId=node.protein_id||node.id||'';
+    const sequence=node.sequence||'';
+    const sequenceLength=node.sequence_length||sequence.length||0;
+
+    if((type==='drug'||smiles)&&smiles){
+        return `<div class="ai-structure-preview">
+            <b><i class="bi bi-capsule-pill"></i> Cấu trúc thuốc: ${esc(name)}</b>
+            <a href="https://molview.org/?smiles=${encodeURIComponent(smiles)}" target="_blank" rel="noopener" title="Mở 3D MolView">
+                <img src="${molImg(smiles)}" alt="Drug molecular structure" onerror="this.outerHTML='<small style=\'color:var(--text-muted)\'>Không render được ảnh phân tử</small>'">
+            </a>
+            <code class="smiles" style="display:block;margin-top:8px;">${esc(smiles)}</code>
+            <div class="ai-structure-actions">
+                <a href="https://molview.org/?smiles=${encodeURIComponent(smiles)}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> MolView 3D</a>
+            </div>
+        </div>`;
+    }
+
+    if(type==='protein'||node.model_type==='protein'||sequence||proteinId){
+        return `<div class="ai-structure-preview">
+            <b><i class="bi bi-diagram-3-fill"></i> Cấu trúc protein: ${esc(name)}</b>
+            ${proteinRibbonSvg(sequence||name||proteinId)}
+            <small style="display:block;margin-top:8px;color:var(--text-muted);font-weight:800;">${sequenceLength?`Sequence length: ${fmtNum(sequenceLength)} AA`:''}${node.node_id?` - Node ${esc(node.node_id)}`:''}</small>
+            ${sequence?`<code class="smiles" style="display:block;margin-top:8px;max-height:70px;overflow:hidden;">${esc(sequence)}</code>`:''}
+            <div class="ai-structure-actions">
+                ${proteinId&&!/^protein_/i.test(proteinId)?`<a href="https://alphafold.ebi.ac.uk/entry/${encodeURIComponent(proteinId)}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> AlphaFold 3D</a>`:''}
+                <a href="index.php?action=catalog&type=protein&dataset=${encodeURIComponent(currentDataset())}" target="_blank" rel="noopener"><i class="bi bi-list-ul"></i> Catalog protein</a>
+            </div>
+        </div>`;
+    }
+
+    return '';
+}
+
 // Form Navigation tabs
 document.querySelectorAll('[data-form-tab]').forEach(tabBtn => {
     tabBtn.onclick = () => {
@@ -1440,6 +1556,7 @@ async function loadFullDrugDiseaseNetwork(){
                     <b>${esc(groupLabel)}: ${esc(node.label)}</b>
                     <small>ID node: ${esc(node.id)} · Số liên kết đang hiển thị: ${fmtNum(connectedEdges.length)}</small>
                 `;
+                detail.innerHTML += structureDetailHtml(node);
                 return;
             }
             if(params.edges?.length){
@@ -1603,13 +1720,21 @@ function renderProteinPanel(graph){
         </div>
         <div class="ai-protein-grid">
             ${unique.map((n,i)=>`
-                <span class="ai-protein-chip" title="${esc(n.id||'')}">
+                <span class="ai-protein-chip" data-protein-index="${i}" title="${esc(n.id||'')}">
                     <i class="bi bi-record-circle-fill"></i>
                     ${i+1}. ${esc(n.label||n.name||n.id)}
                 </span>
             `).join('')}
         </div>
+        <div class="ai-protein-detail" id="proteinStructureDetail"></div>
     `;
+    panel.querySelectorAll('[data-protein-index]').forEach(chip=>{
+        chip.addEventListener('click',()=>{
+            const n=unique[Number(chip.dataset.proteinIndex)]||{};
+            const detail=$('proteinStructureDetail');
+            if(detail)detail.innerHTML=structureDetailHtml({...n,group:'protein'});
+        });
+    });
 }
 
 // Chart rendering
@@ -2270,6 +2395,7 @@ drawGraph = function(graph){
             const idx=meshes.indexOf(hits[0].object);
             if(idx>=0){
                 const n=nodeMeshes[idx].data;
+                setTimeout(()=>{$('nodeInfo').innerHTML += structureDetailHtml(n);},0);
                 const mTypeLabel = n.model_type==='input'?'Đầu vào':(n.model_type==='current'?'Mô hình cải tiến':(n.model_type==='protein'?'Đích Protein':'Mô hình gốc'));
                 $('nodeInfo').style.display='block';
                 $('nodeInfo').innerHTML=`<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">

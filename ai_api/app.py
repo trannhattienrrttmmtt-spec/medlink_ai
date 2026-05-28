@@ -464,6 +464,27 @@ def make_network_node(node_type, idx, name):
     }
 
 
+def enrich_network_node(node, dataset=DEFAULT_DATASET, idx=0, details=None):
+    node_type = node.get("group")
+    details = details or {}
+
+    if node_type == "drug":
+        drug = details.get("drugs", [])
+        if 0 <= idx < len(drug):
+            node["smiles"] = drug[idx].get("smiles", "")
+            node["drug_id"] = drug[idx].get("id", "")
+
+    if node_type == "protein":
+        proteins = details.get("proteins", [])
+        protein = proteins[idx] if 0 <= idx < len(proteins) else {}
+        node["protein_id"] = protein.get("id", "")
+        node["node_id"] = protein.get("node_id", "")
+        node["sequence"] = protein.get("sequence", "")
+        node["sequence_length"] = protein.get("sequence_length", 0)
+
+    return node
+
+
 def build_association_network(dataset=DEFAULT_DATASET, relation="drug_disease", limit=1500, model_view="both"):
     dataset = clean_dataset(dataset)
     relation = normalize_key(relation) or "drug_disease"
@@ -478,6 +499,8 @@ def build_association_network(dataset=DEFAULT_DATASET, relation="drug_disease", 
     drugs = load_drugs(dataset)
     diseases = get_ordered_disease_names(dataset)
     proteins = get_ordered_protein_names(dataset)
+    protein_details = list_protein_candidates(dataset, limit=100000)
+    enrich_details = {"drugs": drugs, "proteins": protein_details}
 
     relation_config = {
         "drug_disease": {
@@ -571,9 +594,11 @@ def build_association_network(dataset=DEFAULT_DATASET, relation="drug_disease", 
 
     nodes = []
     for idx in sorted(used_source):
-        nodes.append(make_network_node(relation_config["source_type"], idx, relation_config["source_names"][idx]))
+        node = make_network_node(relation_config["source_type"], idx, relation_config["source_names"][idx])
+        nodes.append(enrich_network_node(node, dataset=dataset, idx=idx, details=enrich_details))
     for idx in sorted(used_target):
-        nodes.append(make_network_node(relation_config["target_type"], idx, relation_config["target_names"][idx]))
+        node = make_network_node(relation_config["target_type"], idx, relation_config["target_names"][idx])
+        nodes.append(enrich_network_node(node, dataset=dataset, idx=idx, details=enrich_details))
 
     return {
         "nodes": nodes,
@@ -1227,7 +1252,7 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
         "label": keyword,
         "type": center_type,
         "score": None,
-        "smiles": "",
+        "smiles": find_smiles_for_drug(keyword, dataset) if input_type == "drug" else "",
         "model_type": "input"
     })
     node_ids.add(center_id)
@@ -1302,6 +1327,7 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
                         all_nodes_list.append(row[1].strip())
 
             protein_names = all_nodes_list[drug_count + disease_count:]
+            protein_info = load_protein_info_rows(dataset)
 
             # Load drug-protein associations
             drpr_file = find_file_case_insensitive(dpath, ["DrugProteinAssociationNumber.csv"])
@@ -1344,12 +1370,18 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
                                 short_name = pname.replace("9606.ensp", "ENSP")[:15]
                                 pid = f"protein_{pi}"
                                 if pid not in node_ids:
+                                    pinfo = protein_info[pi] if pi < len(protein_info) else {}
+                                    sequence = normalize_text(pinfo.get("sequence", ""))
                                     nodes.append({
                                         "id": pid,
+                                        "protein_id": normalize_text(pinfo.get("id", "")),
+                                        "node_id": pname,
                                         "label": short_name,
                                         "type": "protein",
                                         "score": None,
                                         "smiles": "",
+                                        "sequence": sequence,
+                                        "sequence_length": len(sequence),
                                         "model_type": "protein"
                                     })
                                     node_ids.add(pid)
@@ -1364,12 +1396,18 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
                                 short_name = pname.replace("9606.ensp", "ENSP")[:15]
                                 pid = f"protein_{pi}"
                                 if pid not in node_ids:
+                                    pinfo = protein_info[pi] if pi < len(protein_info) else {}
+                                    sequence = normalize_text(pinfo.get("sequence", ""))
                                     nodes.append({
                                         "id": pid,
+                                        "protein_id": normalize_text(pinfo.get("id", "")),
+                                        "node_id": pname,
                                         "label": short_name,
                                         "type": "protein",
                                         "score": None,
                                         "smiles": "",
+                                        "sequence": sequence,
+                                        "sequence_length": len(sequence),
                                         "model_type": "protein"
                                     })
                                     node_ids.add(pid)
@@ -1711,12 +1749,9 @@ def disease_options():
         options.append(
             {
                 "id": x.get("id", ""),
-                "node_id": x.get("node_id", ""),
                 "name": x.get("name", ""),
                 "label": x.get("name", ""),
                 "value": x.get("name", ""),
-                "sequence": x.get("sequence", ""),
-                "sequence_length": x.get("sequence_length", 0),
             }
         )
 
@@ -1752,9 +1787,12 @@ def protein_options():
         options.append(
             {
                 "id": x.get("id", ""),
+                "node_id": x.get("node_id", ""),
                 "name": x.get("name", ""),
                 "label": x.get("name", ""),
                 "value": x.get("name", ""),
+                "sequence": x.get("sequence", ""),
+                "sequence_length": x.get("sequence_length", 0),
             }
         )
 
