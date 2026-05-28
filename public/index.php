@@ -33,6 +33,9 @@ switch ($action) {
     case 'dashboard':
         $predictionController->dashboard();
         break;
+    case 'catalog':
+        $predictionController->catalog();
+        break;
     case 'predict':
         $predictionController->predict();
         break;

@@ -171,20 +171,258 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
     border-color: var(--primary);
 }
 #aiGraph {
-    height: 440px;
-    border-radius: var(--radius);
-    border: 1px solid var(--line);
-    background: var(--card);
-    box-shadow: var(--shadow);
+    height: 530px;
+    position: relative;
+    overflow: hidden;
+    border-radius: 22px;
+    border: 1px solid rgba(129, 140, 248, 0.28);
+    background:
+        radial-gradient(circle at 50% 42%, rgba(129, 140, 248, 0.20), transparent 34%),
+        radial-gradient(circle at 18% 18%, rgba(16, 185, 129, 0.14), transparent 26%),
+        linear-gradient(135deg, #080d1c 0%, #111827 48%, #0b1020 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04), 0 20px 45px rgba(2, 6, 23, 0.28);
+}
+.ai-graph-card {
+    position: relative;
+    overflow: hidden;
+    border-color: rgba(129, 140, 248, 0.32) !important;
+    background:
+        linear-gradient(180deg, rgba(129,140,248,0.06), transparent 34%),
+        var(--card) !important;
+}
+.ai-graph-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 4px;
+    background: linear-gradient(90deg, #6366f1, #22c55e, #f59e0b, #ec4899);
+    opacity: 0.95;
+}
+.ai-graph-card .section-title {
+    position: relative;
+    z-index: 1;
+    padding: 4px 0 10px;
+}
+.ai-graph-card .section-title .icon {
+    background: linear-gradient(135deg, rgba(99,102,241,0.20), rgba(236,72,153,0.16));
+    box-shadow: 0 10px 28px rgba(99,102,241,0.18);
+}
+#aiGraph::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+    background-size: 44px 44px;
+    background-position: 0 0;
+    mask-image: radial-gradient(circle at center, black, transparent 72%);
+    animation: graphGridDrift 14s linear infinite;
+}
+#aiGraph::after {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    pointer-events: none;
+    z-index: 2;
+    border-radius: 16px;
+    border: 1px solid rgba(129, 140, 248, 0.18);
+    box-shadow:
+        inset 0 0 32px rgba(129, 140, 248, 0.10),
+        inset 0 0 0 1px rgba(255,255,255,0.03);
+    background:
+        radial-gradient(circle at 50% 0%, rgba(236,72,153,0.18), transparent 28%),
+        linear-gradient(90deg, rgba(129,140,248,0.42) 0 58px, transparent 58px calc(100% - 58px), rgba(129,140,248,0.42) calc(100% - 58px)) top / 100% 1px no-repeat,
+        linear-gradient(90deg, rgba(129,140,248,0.42) 0 58px, transparent 58px calc(100% - 58px), rgba(129,140,248,0.42) calc(100% - 58px)) bottom / 100% 1px no-repeat,
+        linear-gradient(180deg, rgba(129,140,248,0.42) 0 58px, transparent 58px calc(100% - 58px), rgba(129,140,248,0.42) calc(100% - 58px)) left / 1px 100% no-repeat,
+        linear-gradient(180deg, rgba(129,140,248,0.42) 0 58px, transparent 58px calc(100% - 58px), rgba(129,140,248,0.42) calc(100% - 58px)) right / 1px 100% no-repeat;
+    animation: graphFramePulse 3.2s ease-in-out infinite;
+}
+#aiGraph canvas {
+    position: relative;
+    z-index: 1;
+}
+.ai-graph-hud {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    z-index: 3;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    pointer-events: none;
+}
+.ai-graph-title {
+    padding: 10px 13px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.74);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    color: #f8fafc;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.24);
+    backdrop-filter: blur(12px);
+    position: relative;
+    overflow: hidden;
+}
+.ai-graph-title::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: linear-gradient(180deg, #22d3ee, #818cf8, #ec4899);
+}
+.ai-graph-title b {
+    display: block;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.ai-graph-title small {
+    display: block;
+    margin-top: 3px;
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 700;
+}
+.ai-graph-metrics {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.ai-graph-chip {
+    min-width: 72px;
+    padding: 8px 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.72);
+    color: #f8fafc;
+    text-align: center;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.22);
+    backdrop-filter: blur(12px);
+    position: relative;
+    overflow: hidden;
+}
+.ai-graph-chip::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.16;
+}
+.ai-graph-chip:nth-child(1)::before { background: #ec4899; }
+.ai-graph-chip:nth-child(2)::before { background: #10b981; }
+.ai-graph-chip:nth-child(3)::before { background: #f59e0b; }
+.ai-graph-chip:nth-child(4)::before { background: #818cf8; }
+.ai-graph-chip span,
+.ai-graph-chip small {
+    position: relative;
+    z-index: 1;
+}
+.ai-graph-chip span {
+    display: block;
+    font-size: 18px;
+    line-height: 1;
+    font-weight: 900;
+}
+.ai-graph-chip small {
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.ai-graph-footer {
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    bottom: 16px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    pointer-events: none;
+}
+.ai-graph-aurora {
+    position: absolute;
+    inset: -20%;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0.42;
+    mix-blend-mode: screen;
+    background:
+        conic-gradient(from 180deg at 50% 50%, transparent 0deg, rgba(34,211,238,0.16) 72deg, transparent 120deg, rgba(236,72,153,0.14) 210deg, transparent 300deg),
+        radial-gradient(circle at 34% 62%, rgba(16,185,129,0.13), transparent 26%);
+    filter: blur(18px);
+    animation: graphAuroraSweep 11s ease-in-out infinite alternate;
+}
+.ai-graph-status,
+.ai-graph-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.72);
+    color: #cbd5e1;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.22);
+    backdrop-filter: blur(12px);
+}
+.ai-live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 14px #22c55e;
+    animation: graphLivePulse 1.4s ease-in-out infinite;
+}
+@keyframes graphGridDrift {
+    from { background-position: 0 0; }
+    to { background-position: 44px 44px; }
+}
+@keyframes graphFramePulse {
+    0%, 100% { opacity: 0.72; }
+    50% { opacity: 1; }
+}
+@keyframes graphLivePulse {
+    0%, 100% { transform: scale(0.85); opacity: 0.65; }
+    50% { transform: scale(1.25); opacity: 1; }
+}
+@keyframes graphAuroraSweep {
+    from { transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1); }
+    to { transform: translate3d(4%, 2%, 0) rotate(18deg) scale(1.08); }
 }
 .ai-legend {
     display: flex;
-    gap: 16px;
-    font-size: 13px;
+    gap: 10px;
+    align-items: center;
+    font-size: 12.5px;
     color: var(--text-muted);
     margin-top: 15px;
     flex-wrap: wrap;
-    font-weight: 500;
+    font-weight: 700;
+}
+.ai-legend span {
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--bg-soft);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.ai-legend span:hover {
+    transform: translateY(-2px);
+    border-color: rgba(129, 140, 248, 0.42);
+    box-shadow: 0 12px 28px rgba(99, 102, 241, 0.12);
 }
 .ai-dot {
     width: 12px;
@@ -468,9 +706,9 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
 
         <!-- Stats -->
         <section class="ml-grid cards ml-stats-grid fade-up" style="animation-delay: 0.1s">
-            <div class="ml-card ml-stat-card"><div class="ml-card-head"><div><small>THUỐC</small><div class="ml-stat-number" id="sDrugs">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Hoạt chất</small></div><div class="ml-stat-icon">💊</div></div></div>
-            <div class="ml-card ml-stat-card"><div class="ml-card-head"><div><small>BỆNH</small><div class="ml-stat-number" id="sDiseases">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Chỉ dấu</small></div><div class="ml-stat-icon">🧬</div></div></div>
-            <div class="ml-card ml-stat-card"><div class="ml-card-head"><div><small>PROTEIN</small><div class="ml-stat-number" id="sProteins">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Đích sinh học</small></div><div class="ml-stat-icon">🔬</div></div></div>
+            <a class="ml-card ml-stat-card" id="linkDrugs" href="index.php?action=catalog&type=drug&dataset=B-dataset" style="text-decoration:none;color:inherit"><div class="ml-card-head"><div><small>THUỐC</small><div class="ml-stat-number" id="sDrugs">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Hoạt chất</small></div><div class="ml-stat-icon">💊</div></div></a>
+            <a class="ml-card ml-stat-card" id="linkDiseases" href="index.php?action=catalog&type=disease&dataset=B-dataset" style="text-decoration:none;color:inherit"><div class="ml-card-head"><div><small>BỆNH</small><div class="ml-stat-number" id="sDiseases">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Chỉ dấu</small></div><div class="ml-stat-icon">🧬</div></div></a>
+            <a class="ml-card ml-stat-card" id="linkProteins" href="index.php?action=catalog&type=protein&dataset=B-dataset" style="text-decoration:none;color:inherit"><div class="ml-card-head"><div><small>PROTEIN</small><div class="ml-stat-number" id="sProteins">—</div><small style="color:var(--green); font-weight:700;"><i class="bi bi-check-circle-fill"></i> Đích sinh học</small></div><div class="ml-stat-icon">🔬</div></div></a>
             <div class="ml-card ml-stat-card"><div class="ml-card-head"><div><small>MODELS</small><div class="ml-stat-number">2</div><small style="color:var(--text-muted); font-weight:700;">Cải tiến + Gốc AMDGT</small></div><div class="ml-stat-icon">🤖</div></div></div>
         </section>
 
@@ -507,7 +745,8 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                                 </div>
                                 <div class="ml-field">
                                     <label>Top hiển thị (K)</label>
-                                    <input id="pTopK" type="number" min="1" max="20" value="9">
+                                    <input id="pTopK" type="number" min="1" max="50" value="9">
+                                    <small style="display:block;margin-top:6px;color:var(--text-muted);font-weight:700;">Tối đa 50 kết quả để tránh graph quá nặng</small>
                                 </div>
                             </div>
                             <div class="ml-field search-box">
@@ -637,7 +876,7 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
         </section>
 
         <!-- 3D Connection Graph Section -->
-        <section class="ml-card fade-up" id="graphCard" style="display:none;margin-bottom:24px">
+        <section class="ml-card ai-graph-card fade-up" id="graphCard" style="display:none;margin-bottom:24px">
             <div class="section-title">
                 <div class="icon"><i class="bi bi-diagram-3-fill"></i></div>
                 <h3 id="graph-section">Mạng tương tác 3D Drug-Disease</h3>
@@ -710,6 +949,9 @@ function skeleton(rows=3){return `<div style="display:flex;flex-direction:column
 // Load selection lists on load or change
 async function loadOpts(){
     const ds=$('pDataset').value,type=$('pType').value;
+    $('linkDrugs').href=`index.php?action=catalog&type=drug&dataset=${encodeURIComponent(ds)}`;
+    $('linkDiseases').href=`index.php?action=catalog&type=disease&dataset=${encodeURIComponent(ds)}`;
+    $('linkProteins').href=`index.php?action=catalog&type=protein&dataset=${encodeURIComponent(ds)}`;
     $('pKeyword').innerHTML='<option value="">Đang tải dữ liệu...</option>';
     const ep=type==='drug'?'/drug_options':'/disease_options';
     try{
@@ -834,6 +1076,9 @@ function renderChart(cur,orig){
     const allSameDrug=rows.length>0&&rows.every(r=>(r.drug_name||'')===(rows[0].drug_name||''));
     const getName=allSameDrug?(r=>r.disease_name||r.name||''):(r=>r.drug_name||r.name||'');
     const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+    const inputName=$('pKeyword')?.value||'';
+    const inputType=$('pType')?.value||'drug';
+    const targetLabel=inputType==='drug'?'bệnh được dự đoán':'thuốc được dự đoán';
     
     chartInst=new Chart($('chartCanvas'),{
         type:'bar',
@@ -848,6 +1093,20 @@ function renderChart(cur,orig){
             responsive:true,
             maintainAspectRatio:false,
             plugins:{
+                title:{
+                    display:!!inputName,
+                    text:inputName?`${inputName} → Top ${targetLabel}`:'',
+                    color:isDark?'#f8fafc':'#0f172a',
+                    font:{size:15,weight:'800',family:'Plus Jakarta Sans'},
+                    padding:{bottom:4}
+                },
+                subtitle:{
+                    display:!!inputName,
+                    text:inputType==='drug'?'Tên thuốc là đầu vào, trục X là các bệnh mô hình dự đoán.':'Tên bệnh là đầu vào, trục X là các thuốc mô hình dự đoán.',
+                    color:isDark?'#94a3b8':'#64748b',
+                    font:{size:11,weight:'700',family:'Plus Jakarta Sans'},
+                    padding:{bottom:12}
+                },
                 legend:{labels:{color:isDark?'#e2e8f0':'#0f172a',font:{weight:'700',family:'Plus Jakarta Sans'}}}
             },
             scales:{
@@ -881,7 +1140,9 @@ $('btnPredict').onclick=async()=>{
     }, 100);
 
     try{
-        const data=await post('/predict_compare',{dataset:$('pDataset').value,input_type:$('pType').value,keyword:kw,top_k:+$('pTopK').value||9});
+        const topK=Math.max(1,Math.min(50,+$('pTopK').value||9));
+        $('pTopK').value=topK;
+        const data=await post('/predict_compare',{dataset:$('pDataset').value,input_type:$('pType').value,keyword:kw,top_k:topK});
         renderTbl('boxCur',data.current);
         renderTbl('boxOrig',data.original);
         renderProteinPanel(data.graph);
@@ -984,62 +1245,250 @@ drawGraph = function(graph){
     }
     container.innerHTML='';
 
-    const width=container.clientWidth||700, height=440;
+    const width=container.clientWidth||700, height=container.clientHeight||500;
     const scene=new THREE.Scene();
+    scene.background=new THREE.Color(0x0b1020);
     
-    const camera=new THREE.PerspectiveCamera(55,width/height,0.1,1000);
-    camera.position.set(0,25,85);
+    const camera=new THREE.PerspectiveCamera(48,width/height,0.1,1000);
+    camera.position.set(0,30,72);
 
-    const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+    const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
     renderer.setSize(width,height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    renderer.setClearColor(0x0b1020,1);
     container.appendChild(renderer.domElement);
-    renderer.domElement.style.borderRadius='20px';
+    renderer.domElement.style.borderRadius='22px';
     renderer.domElement.style.cursor='grab';
+    const counts={
+        input:graph.nodes.filter(n=>n.model_type==='input').length,
+        current:graph.nodes.filter(n=>n.model_type==='current').length,
+        original:graph.nodes.filter(n=>n.model_type==='original').length,
+        protein:graph.nodes.filter(n=>n.model_type==='protein').length
+    };
+    const hud=document.createElement('div');
+    hud.className='ai-graph-hud';
+    hud.innerHTML=`
+        <div class="ai-graph-title">
+            <b>Biomedical link map</b>
+            <small>${graph.edges?.length||0} connections rendered in 3D</small>
+        </div>
+        <div class="ai-graph-metrics">
+            <div class="ai-graph-chip"><span>${counts.input}</span><small>Input</small></div>
+            <div class="ai-graph-chip"><span>${counts.current}</span><small>AI</small></div>
+            <div class="ai-graph-chip"><span>${counts.original}</span><small>AMDGT</small></div>
+            <div class="ai-graph-chip"><span>${counts.protein}</span><small>Protein</small></div>
+        </div>`;
+    container.appendChild(hud);
+    const footer=document.createElement('div');
+    footer.className='ai-graph-footer';
+    footer.innerHTML=`
+        <div class="ai-graph-status"><span class="ai-live-dot"></span> Live topology stream</div>
+        <div class="ai-graph-mode">Drag rotate · Scroll zoom · Click node</div>`;
+    container.appendChild(footer);
+    const aurora=document.createElement('div');
+    aurora.className='ai-graph-aurora';
+    container.appendChild(aurora);
 
     const controls=new THREE.OrbitControls(camera,renderer.domElement);
     controls.enableDamping=true;
     controls.dampingFactor=0.05;
     controls.autoRotate=true;
-    controls.autoRotateSpeed=0.6;
+    controls.autoRotateSpeed=0.45;
+    controls.minDistance=48;
+    controls.maxDistance=115;
+    controls.target.set(0,0,0);
 
     const colorMap={input:0xec4899,current:0x10b981,original:0xf59e0b,protein:0x818cf8};
     const nodeMeshes=[];
     const nodePos={};
+    const edgePulses=[];
+    const floorY=-14;
+    const orbitTotal=Math.max(graph.nodes.filter(n=>n.model_type!=='input').length,1);
+    let orbitIndex=0;
 
-    // Render nodes - custom meshes
+    function labelColor(n,isInput,isCurrent,isProtein){
+        if(isInput)return '#f9a8d4';
+        if(isCurrent)return '#6ee7b7';
+        if(isProtein)return '#c4b5fd';
+        return '#fcd34d';
+    }
+
+    function roundRect(ctx,x,y,w,h,r){
+        ctx.beginPath();
+        ctx.moveTo(x+r,y);
+        ctx.lineTo(x+w-r,y);
+        ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+        ctx.lineTo(x+w,y+h-r);
+        ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+        ctx.lineTo(x+r,y+h);
+        ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+        ctx.lineTo(x,y+r);
+        ctx.quadraticCurveTo(x,y,x+r,y);
+        ctx.closePath();
+    }
+
+    function makeBadgeTexture(n,isInput,isCurrent,isProtein,col){
+        const canvas=document.createElement('canvas');
+        canvas.width=256;
+        canvas.height=256;
+        const ctx=canvas.getContext('2d');
+        const color='#'+col.toString(16).padStart(6,'0');
+        const label=isInput?'IN':(isCurrent?'AI':(isProtein?'PR':'OG'));
+
+        ctx.clearRect(0,0,256,256);
+        ctx.shadowColor=color;
+        ctx.shadowBlur=32;
+        ctx.fillStyle=color;
+        ctx.beginPath();
+        for(let i=0;i<6;i++){
+            const angle=Math.PI/6+i*Math.PI/3;
+            const x=128+Math.cos(angle)*74;
+            const y=128+Math.sin(angle)*74;
+            if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        const grad=ctx.createLinearGradient(72,62,184,194);
+        grad.addColorStop(0,'rgba(255,255,255,0.42)');
+        grad.addColorStop(0.45,'rgba(255,255,255,0.14)');
+        grad.addColorStop(1,'rgba(15,23,42,0.16)');
+        ctx.shadowBlur=0;
+        ctx.fillStyle=grad;
+        ctx.fill();
+
+        ctx.strokeStyle='rgba(255,255,255,0.68)';
+        ctx.lineWidth=7;
+        ctx.stroke();
+
+        ctx.fillStyle='rgba(15,23,42,0.22)';
+        roundRect(ctx,84,99,88,58,16);
+        ctx.fill();
+
+        ctx.fillStyle='#ffffff';
+        ctx.font='900 36px Inter, sans-serif';
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        ctx.fillText(label,128,129);
+
+        const tex=new THREE.CanvasTexture(canvas);
+        tex.needsUpdate=true;
+        return tex;
+    }
+
+    function makeHaloTexture(col){
+        const canvas=document.createElement('canvas');
+        canvas.width=256;
+        canvas.height=256;
+        const ctx=canvas.getContext('2d');
+        const color='#'+col.toString(16).padStart(6,'0');
+        const grad=ctx.createRadialGradient(128,128,18,128,128,116);
+        grad.addColorStop(0,color);
+        grad.addColorStop(0.42,'rgba(255,255,255,0.14)');
+        grad.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.fillStyle=grad;
+        ctx.fillRect(0,0,256,256);
+        const tex=new THREE.CanvasTexture(canvas);
+        tex.needsUpdate=true;
+        return tex;
+    }
+
+    const orbitRings=[];
+    [10,16,23].forEach((radius,idx)=>{
+        const ringGeo=new THREE.TorusGeometry(radius,0.035,8,120);
+        const ringMat=new THREE.MeshBasicMaterial({
+            color:idx===0?0xec4899:(idx===1?0x818cf8:0x10b981),
+            transparent:true,
+            opacity:0.20-idx*0.035
+        });
+        const ring=new THREE.Mesh(ringGeo,ringMat);
+        ring.rotation.x=Math.PI/2;
+        ring.rotation.z=idx*0.45;
+        scene.add(ring);
+        orbitRings.push(ring);
+    });
+    const grid=new THREE.GridHelper(76,32,0x334155,0x1e293b);
+    grid.position.y=floorY;
+    grid.material.transparent=true;
+    grid.material.opacity=0.22;
+    scene.add(grid);
+    const floorGlowGeo=new THREE.CircleGeometry(32,96);
+    const floorGlowMat=new THREE.MeshBasicMaterial({
+        color:0x818cf8,
+        transparent:true,
+        opacity:0.055,
+        blending:THREE.AdditiveBlending,
+        depthWrite:false,
+        side:THREE.DoubleSide
+    });
+    const floorGlow=new THREE.Mesh(floorGlowGeo,floorGlowMat);
+    floorGlow.rotation.x=-Math.PI/2;
+    floorGlow.position.y=floorY+0.02;
+    scene.add(floorGlow);
+
+    // Render nodes - clean badge sprites
     graph.nodes.forEach((n,i)=>{
         const isInput=n.model_type==='input';
         const isCurrent=n.model_type==='current';
         const isProtein=n.model_type==='protein';
         const col=colorMap[n.model_type]||0x94a3b8;
-        let geo;
-
-        if(isInput){
-            geo=new THREE.IcosahedronGeometry(4.5,1);
-        }else if(isCurrent){
-            geo=new THREE.BoxGeometry(3.6,3.6,3.6);
-        }else if(isProtein){
-            geo=new THREE.TorusGeometry(2.2,0.7,12,24);
-        }else{
-            geo=new THREE.OctahedronGeometry(2.8);
-        }
-
-        const mat=new THREE.MeshPhongMaterial({color:col,emissive:col,emissiveIntensity:0.35,shininess:80,transparent:true,opacity:0.9});
-        const mesh=new THREE.Mesh(geo,mat);
+        const mat=new THREE.SpriteMaterial({
+            map:makeBadgeTexture(n,isInput,isCurrent,isProtein,col),
+            transparent:true,
+            depthWrite:false
+        });
+        const mesh=new THREE.Sprite(mat);
+        const badgeSize=isInput?9.5:7.2;
+        mesh.scale.set(badgeSize,badgeSize,1);
 
         if(isInput){
             mesh.position.set(0,0,0);
         }else{
-            const angle=(i/(graph.nodes.length-1))*Math.PI*2;
-            const radius=28+Math.random()*8;
-            const y=(Math.random()-0.5)*18;
+            const angle=(orbitIndex/orbitTotal)*Math.PI*2;
+            const radius=22+(orbitIndex%3)*4;
+            const y=((orbitIndex%5)-2)*4.2;
+            orbitIndex++;
             mesh.position.set(Math.cos(angle)*radius, y, Math.sin(angle)*radius);
         }
 
         nodePos[n.id]=mesh.position.clone();
+        const halo=new THREE.Sprite(new THREE.SpriteMaterial({
+            map:makeHaloTexture(col),
+            transparent:true,
+            blending:THREE.AdditiveBlending,
+            depthWrite:false,
+            opacity:isInput?0.72:0.48
+        }));
+        halo.position.copy(mesh.position);
+        halo.scale.set(badgeSize*2.4,badgeSize*2.4,1);
+        scene.add(halo);
         scene.add(mesh);
-        nodeMeshes.push({mesh,data:n});
+        const platformGeo=new THREE.TorusGeometry(isInput?4.8:3.4,0.06,8,60);
+        const platformMat=new THREE.MeshBasicMaterial({
+            color:col,
+            transparent:true,
+            opacity:isInput?0.44:0.28,
+            blending:THREE.AdditiveBlending,
+            depthWrite:false
+        });
+        const platform=new THREE.Mesh(platformGeo,platformMat);
+        platform.rotation.x=Math.PI/2;
+        platform.position.set(mesh.position.x,floorY+0.18,mesh.position.z);
+        scene.add(platform);
+        const beaconGeo=new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(mesh.position.x,floorY+0.3,mesh.position.z),
+            new THREE.Vector3(mesh.position.x,mesh.position.y-1.4,mesh.position.z)
+        ]);
+        const beaconMat=new THREE.LineBasicMaterial({
+            color:col,
+            transparent:true,
+            opacity:isInput?0.36:0.20,
+            blending:THREE.AdditiveBlending,
+            depthWrite:false
+        });
+        const beacon=new THREE.Line(beaconGeo,beaconMat);
+        scene.add(beacon);
+        nodeMeshes.push({mesh,halo,platform,beacon,badgeSize,data:n});
 
         // Glow ring for inputs
         if(isInput){
@@ -1052,26 +1501,60 @@ drawGraph = function(graph){
 
         // Text sprite tags
         const canvas=document.createElement('canvas');
-        canvas.width=512;canvas.height=90;
+        canvas.width=640;canvas.height=112;
         const ctx=canvas.getContext('2d');
-        ctx.fillStyle='#ffffff';
-        ctx.font='bold 20px Inter, sans-serif';
         ctx.textAlign='center';
-        const lbl=(n.label||'').length>22?(n.label||'').slice(0,20)+'...':(n.label||'');
+        ctx.textBaseline='middle';
+        const lbl=(n.label||'').length>24?(n.label||'').slice(0,22)+'...':(n.label||'');
         const scoreText=n.score?` (${Math.round(n.score*100)}%)`:'';
         const typeText=isInput?'[INPUT]':(isCurrent?'[MÔ HÌNH CẢI TIẾN]':(isProtein?'[PROTEIN]':'[MÔ HÌNH GỐC]'));
         ctx.fillText(lbl+scoreText,256,32);
         ctx.font='bold 13px Inter';
         ctx.fillStyle=isInput?'#f9a8d4':(isCurrent?'#6ee7b7':'#fcd34d');
         ctx.fillText(typeText,256,58);
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        const cleanTypeText=isInput?'INPUT':(isCurrent?'MODEL MOI':(isProtein?'PROTEIN':'AMDGT GOC'));
+        ctx.shadowColor='rgba(0,0,0,0.45)';
+        ctx.shadowBlur=18;
+        ctx.fillStyle='rgba(15,23,42,0.78)';
+        roundRect(ctx,64,12,512,78,18);
+        ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.strokeStyle='rgba(148,163,184,0.25)';
+        ctx.lineWidth=2;
+        roundRect(ctx,64,12,512,78,18);
+        ctx.stroke();
+        ctx.fillStyle='#f8fafc';
+        ctx.font='800 23px Inter, sans-serif';
+        ctx.fillText(lbl+scoreText,320,38);
+        ctx.font='800 13px Inter, sans-serif';
+        ctx.fillStyle=labelColor(n,isInput,isCurrent,isProtein);
+        ctx.fillText(cleanTypeText,320,67);
+        if(n.score){
+            const pct=Math.max(0,Math.min(1,n.score));
+            const barGrad=ctx.createLinearGradient(190,92,450,92);
+            barGrad.addColorStop(0,labelColor(n,isInput,isCurrent,isProtein));
+            barGrad.addColorStop(1,'#ffffff');
+            ctx.fillStyle='rgba(148,163,184,0.22)';
+            roundRect(ctx,190,88,260,8,4);
+            ctx.fill();
+            ctx.fillStyle=barGrad;
+            roundRect(ctx,190,88,260*pct,8,4);
+            ctx.fill();
+        }else{
+            ctx.fillStyle='rgba(148,163,184,0.70)';
+            ctx.font='700 11px Inter, sans-serif';
+            ctx.fillText('TOPOLOGY ANCHOR',320,92);
+        }
         
         const tex=new THREE.CanvasTexture(canvas);
         const spMat=new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false});
         const sprite=new THREE.Sprite(spMat);
         sprite.position.copy(mesh.position);
-        sprite.position.y+=5.5;
-        sprite.scale.set(18,3.2,1);
+        sprite.position.y+=6.2;
+        sprite.scale.set(23,4,1);
         scene.add(sprite);
+        nodeMeshes[nodeMeshes.length-1].label=sprite;
     });
 
     // Edges
@@ -1079,48 +1562,135 @@ drawGraph = function(graph){
         const from=nodePos[e.from], to=nodePos[e.to];
         if(!from||!to)return;
         
-        const direction=new THREE.Vector3().subVectors(to,from);
-        const length=direction.length();
+        const length=from.distanceTo(to);
         const mid=new THREE.Vector3().addVectors(from,to).multiplyScalar(0.5);
         const col=e.model==='current'?0x10b981:(e.model==='protein'?0x818cf8:0xf59e0b);
-        
-        const cylGeo=new THREE.CylinderGeometry(0.16,0.16,length,6);
-        const cylMat=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.8});
-        const cyl=new THREE.Mesh(cylGeo,cylMat);
-        cyl.position.copy(mid);
-        cyl.lookAt(to);
-        cyl.rotateX(Math.PI/2);
-        scene.add(cyl);
 
-        const arrowPos=new THREE.Vector3().lerpVectors(from,to,0.72);
-        const arrowGeo=new THREE.SphereGeometry(0.65,8,8);
+        const control=mid.clone();
+        control.y+=Math.min(14,6+length*0.08);
+        const curve=new THREE.QuadraticBezierCurve3(from,control,to);
+        const glowGeo=new THREE.TubeGeometry(curve,32,0.22,10,false);
+        const glowMat=new THREE.MeshBasicMaterial({
+            color:col,
+            transparent:true,
+            opacity:0.16,
+            blending:THREE.AdditiveBlending,
+            depthWrite:false
+        });
+        const glowMesh=new THREE.Mesh(glowGeo,glowMat);
+        scene.add(glowMesh);
+
+        const tubeGeo=new THREE.TubeGeometry(curve,32,0.075,8,false);
+        const tubeMat=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.78});
+        const tubeMesh=new THREE.Mesh(tubeGeo,tubeMat);
+        scene.add(tubeMesh);
+
+        const arrowPos=curve.getPoint(0.72);
+        const arrowGeo=new THREE.SphereGeometry(0.55,10,10);
         const arrowMat=new THREE.MeshBasicMaterial({color:col});
         const arrow=new THREE.Mesh(arrowGeo,arrowMat);
         arrow.position.copy(arrowPos);
         scene.add(arrow);
+
+        const packetGeo=new THREE.SphereGeometry(0.42,16,16);
+        const packetMat=new THREE.MeshBasicMaterial({
+            color:0xffffff,
+            transparent:true,
+            opacity:0.92,
+            blending:THREE.AdditiveBlending,
+            depthWrite:false
+        });
+        const packet=new THREE.Mesh(packetGeo,packetMat);
+        packet.position.copy(curve.getPoint(0.18));
+        scene.add(packet);
+        edgePulses.push({
+            curve,
+            packet,
+            glow:glowMesh,
+            tube:tubeMesh,
+            speed:0.11+edgePulses.length*0.012,
+            offset:(edgePulses.length*0.19)%1
+        });
     });
 
     // Ambient floating particles
     const particleGeo=new THREE.BufferGeometry();
-    const pCount=250;
+    const pCount=90;
     const positions=new Float32Array(pCount*3);
-    for(let i=0;i<pCount*3;i++)positions[i]=(Math.random()-0.5)*130;
+    for(let i=0;i<pCount*3;i++)positions[i]=(Math.random()-0.5)*105;
     particleGeo.setAttribute('position',new THREE.BufferAttribute(positions,3));
-    const pMat=new THREE.PointsMaterial({color:0x818cf8,size:0.35,transparent:true,opacity:0.5});
+    const pMat=new THREE.PointsMaterial({color:0x818cf8,size:0.28,transparent:true,opacity:0.22});
     scene.add(new THREE.Points(particleGeo,pMat));
 
     // Lights
-    scene.add(new THREE.AmbientLight(0xffffff,0.6));
+    scene.add(new THREE.AmbientLight(0xffffff,0.72));
     const dl=new THREE.DirectionalLight(0xffffff,0.9);
     dl.position.set(30,60,30);
     scene.add(dl);
-    const pl=new THREE.PointLight(0x818cf8,0.6,120);
+    const pl=new THREE.PointLight(0x818cf8,1.2,135);
     pl.position.set(0,25,0);
     scene.add(pl);
+    const coreGeo=new THREE.SphereGeometry(3.6,32,32);
+    const coreMat=new THREE.MeshBasicMaterial({
+        color:0xec4899,
+        transparent:true,
+        opacity:0.18,
+        blending:THREE.AdditiveBlending,
+        depthWrite:false
+    });
+    const coreGlow=new THREE.Mesh(coreGeo,coreMat);
+    scene.add(coreGlow);
+    const scanGeo=new THREE.TorusGeometry(34,0.045,8,160);
+    const scanMat=new THREE.MeshBasicMaterial({
+        color:0x22d3ee,
+        transparent:true,
+        opacity:0.18,
+        blending:THREE.AdditiveBlending,
+        depthWrite:false
+    });
+    const scanRing=new THREE.Mesh(scanGeo,scanMat);
+    scanRing.rotation.x=Math.PI/2;
+    scanRing.position.y=floorY+0.5;
+    scene.add(scanRing);
+
+    let hovered=null;
 
     // Dynamic rotation & render
+    const clock=new THREE.Clock();
     function animate(){
         requestAnimationFrame(animate);
+        const t=clock.getElapsedTime();
+        orbitRings.forEach((ring,idx)=>{
+            ring.rotation.z+=0.0025*(idx+1);
+            ring.material.opacity=(0.13+Math.sin(t*1.4+idx)*0.035);
+        });
+        nodeMeshes.forEach((nm,idx)=>{
+            const pulse=1+Math.sin(t*1.9+idx*0.7)*0.08;
+            const active=nm===hovered;
+            const boost=active?1.24:1;
+            nm.mesh.scale.set(nm.badgeSize*boost,nm.badgeSize*boost,1);
+            nm.halo.scale.set(nm.badgeSize*2.4*pulse*boost,nm.badgeSize*2.4*pulse*boost,1);
+            nm.halo.material.opacity=active?0.86:(idx===0?0.68:0.44);
+            if(nm.label)nm.label.scale.set(active?25.5:23,active?4.45:4,1);
+            nm.mesh.position.y=nm.halo.position.y+Math.sin(t*1.2+idx)*0.12;
+            nm.platform.rotation.z+=0.004+(idx%3)*0.001;
+            nm.platform.material.opacity=(active?0.58:(idx===0?0.38:0.22))+Math.sin(t*1.6+idx)*0.06;
+            nm.beacon.material.opacity=(active?0.48:(idx===0?0.30:0.17))+Math.sin(t*1.4+idx)*0.045;
+        });
+        edgePulses.forEach((ep,idx)=>{
+            const p=(ep.offset+t*ep.speed)%1;
+            ep.packet.position.copy(ep.curve.getPoint(p));
+            const size=0.85+Math.sin(t*5+idx)*0.22;
+            ep.packet.scale.set(size,size,size);
+            ep.packet.material.opacity=0.62+Math.sin(t*4.2+idx)*0.22;
+            ep.glow.material.opacity=0.12+Math.sin(t*2+idx)*0.05;
+        });
+        floorGlow.material.opacity=0.045+Math.sin(t*1.1)*0.018;
+        scanRing.rotation.z+=0.012;
+        scanRing.scale.setScalar(0.86+(t*0.08%0.34));
+        scanRing.material.opacity=0.24-(scanRing.scale.x-0.86)*0.45;
+        coreGlow.scale.setScalar(1.0+Math.sin(t*2.1)*0.16);
+        coreGlow.material.opacity=0.14+Math.sin(t*2.1)*0.05;
         controls.update();
         renderer.render(scene,camera);
     }
@@ -1129,6 +1699,21 @@ drawGraph = function(graph){
     // Click trigger details
     const raycaster=new THREE.Raycaster();
     const mouse=new THREE.Vector2();
+    function updateMouse(ev){
+        const rect=renderer.domElement.getBoundingClientRect();
+        mouse.x=((ev.clientX-rect.left)/width)*2-1;
+        mouse.y=-((ev.clientY-rect.top)/height)*2+1;
+        raycaster.setFromCamera(mouse,camera);
+        const meshes=nodeMeshes.map(nm=>nm.mesh);
+        const hits=raycaster.intersectObjects(meshes);
+        hovered=hits.length?nodeMeshes[meshes.indexOf(hits[0].object)]:null;
+        renderer.domElement.style.cursor=hovered?'pointer':'grab';
+    }
+    renderer.domElement.addEventListener('mousemove',updateMouse);
+    renderer.domElement.addEventListener('mouseleave',()=>{
+        hovered=null;
+        renderer.domElement.style.cursor='grab';
+    });
     renderer.domElement.addEventListener('click',ev=>{
         const rect=renderer.domElement.getBoundingClientRect();
         mouse.x=((ev.clientX-rect.left)/width)*2-1;

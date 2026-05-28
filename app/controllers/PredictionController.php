@@ -21,6 +21,26 @@ class PredictionController
         include '../app/views/user/dashboard.php';
     }
 
+    public function catalog()
+    {
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?action=login');
+            exit;
+        }
+
+        $type = $_GET['type'] ?? 'drug';
+        if (!in_array($type, ['drug', 'disease', 'protein'], true)) {
+            $type = 'drug';
+        }
+
+        $dataset = $_GET['dataset'] ?? 'B-dataset';
+        if (!in_array($dataset, ['B-dataset', 'C-dataset', 'F-dataset'], true)) {
+            $dataset = 'B-dataset';
+        }
+
+        include '../app/views/user/catalog.php';
+    }
+
     public function predict()
     {
         if (!isset($_SESSION['user_id'])) {

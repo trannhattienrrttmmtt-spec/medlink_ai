@@ -17,6 +17,7 @@ Routes:
 import sys
 import random
 import traceback
+import csv
 from pathlib import Path
 
 import torch
@@ -170,6 +171,24 @@ def get_allnode_file(dataset):
     )
 
 
+def get_model_drug_count(dataset):
+    dpath = dataset_path(dataset)
+    drug_feature_file = find_file_case_insensitive(dpath, ["Drug_mol2vec.csv", "DrugFingerprint.csv"])
+    if drug_feature_file and Path(drug_feature_file).exists():
+        with open(drug_feature_file, "r", encoding="utf-8-sig") as f:
+            count = sum(1 for _ in f)
+        if drug_feature_file.name.lower() != "drug_mol2vec.csv":
+            count -= 1
+        return max(count, 0)
+
+    drug_info_path = get_drug_info_file(dataset)
+    if drug_info_path and Path(drug_info_path).exists():
+        rows = read_csv_rows(drug_info_path)
+        return len(rows)
+
+    return 0
+
+
 # =========================================================
 # LOAD DRUG / DISEASE OPTIONS
 # =========================================================
@@ -179,6 +198,9 @@ def load_drugs(dataset=DEFAULT_DATASET):
 
     file_path = get_drug_info_file(dataset)
     rows = read_csv_rows(file_path)
+    model_drug_count = get_model_drug_count(dataset)
+    if model_drug_count > 0:
+        rows = rows[:model_drug_count]
 
     drugs = []
     seen = set()
@@ -273,6 +295,43 @@ def find_smiles_for_drug(drug_name, dataset=DEFAULT_DATASET):
     return mp.get(normalize_key(drug_name), "")
 
 
+def list_protein_candidates(dataset=DEFAULT_DATASET, limit=5000):
+    dataset = clean_dataset(dataset)
+    dpath = dataset_path(dataset)
+    allnode_file = get_allnode_file(dataset)
+    disease_feature_path = find_file_case_insensitive(dpath, ["DiseaseFeature.csv"])
+
+    if not allnode_file or not Path(allnode_file).exists() or not disease_feature_path:
+        return []
+
+    drug_count = get_model_drug_count(dataset)
+    with open(disease_feature_path, "r", encoding="utf-8-sig") as f:
+        disease_count = sum(1 for _ in f)
+
+    all_nodes = []
+    with open(allnode_file, "r", encoding="utf-8-sig", newline="") as f:
+        for row in csv.reader(f):
+            if len(row) >= 2:
+                all_nodes.append(row[1].strip())
+            elif row:
+                all_nodes.append(row[0].strip())
+
+    proteins = []
+    seen = set()
+    for i, name in enumerate(all_nodes[drug_count + disease_count:]):
+        if not name:
+            continue
+        key = normalize_key(name)
+        if key in seen:
+            continue
+        seen.add(key)
+        proteins.append({"id": f"P{i}", "name": name, "label": name, "value": name})
+        if len(proteins) >= limit:
+            break
+
+    return proteins
+
+
 def list_disease_candidates(dataset=DEFAULT_DATASET, limit=1000):
     dataset = clean_dataset(dataset)
 
@@ -310,11 +369,8 @@ def list_disease_candidates(dataset=DEFAULT_DATASET, limit=1000):
     if not all_nodes:
         return []
 
-    # Xác định drug_count từ DrugInformation.csv
-    drug_info_path = get_drug_info_file(dataset)
-    drug_count = 0
-    if drug_info_path and Path(drug_info_path).exists():
-        drug_count = len(read_csv_rows(drug_info_path))
+    # Xác định drug_count theo feature/model, không theo DrugInformation vì có dataset dư dòng metadata.
+    drug_count = get_model_drug_count(dataset)
 
     # Xác định disease_count từ DiseaseFeature.csv hoặc DrugDiseaseAssociationNumber.csv
     dpath = dataset_path(dataset)
@@ -972,7 +1028,7 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
         allnode_file = get_allnode_file(dataset)
         drug_info_file = get_drug_info_file(dataset)
         if allnode_file and drug_info_file:
-            drug_count = len(read_csv_rows(drug_info_file))
+            drug_count = get_model_drug_count(dataset)
             disease_feature = find_file_case_insensitive(dpath, ["DiseaseFeature.csv"])
             disease_count = 0
             if disease_feature:
@@ -1408,6 +1464,44 @@ def disease_options():
             "count": len(options),
             "options": options,
             "diseases": options,
+        }
+    )
+
+
+@app.route("/protein_options", methods=["GET"])
+def protein_options():
+    dataset = clean_dataset(request.args.get("dataset", DEFAULT_DATASET))
+    q = normalize_key(request.args.get("q", ""))
+    limit = safe_int(request.args.get("limit", 700), 700, 1, 10000)
+
+    items = list_protein_candidates(dataset, limit=10000)
+
+    if q:
+        items = [
+            x
+            for x in items
+            if q in normalize_key(x.get("name"))
+            or q in normalize_key(x.get("id"))
+        ]
+
+    options = []
+    for x in items[:limit]:
+        options.append(
+            {
+                "id": x.get("id", ""),
+                "name": x.get("name", ""),
+                "label": x.get("name", ""),
+                "value": x.get("name", ""),
+            }
+        )
+
+    return jsonify(
+        {
+            "ok": True,
+            "dataset": dataset,
+            "count": len(options),
+            "options": options,
+            "proteins": options,
         }
     )
 

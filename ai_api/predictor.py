@@ -418,6 +418,7 @@ class AMDGTPredictor:
             str(x).strip()
             for x in self._read_best_name_column(df_drug)
         ]
+        self.drug_names = self.drug_names[:self.args.drug_number]
         self.raw_drug_nodes = self.drug_names[:]
 
         df_node = pd.read_csv(allnode_path, header=None)
@@ -482,7 +483,6 @@ class AMDGTPredictor:
         }
 
         keyword = self._normalize_text(keyword)
-        keyword = synonym_map.get(keyword, keyword)
 
         for i, name in enumerate(names):
             if self._normalize_text(name) == keyword:
@@ -492,6 +492,17 @@ class AMDGTPredictor:
             normalized_name = self._normalize_text(name)
             if keyword in normalized_name:
                 return i
+
+        keyword_alias = synonym_map.get(keyword)
+        if keyword_alias and keyword_alias != keyword:
+            for i, name in enumerate(names):
+                if self._normalize_text(name) == keyword_alias:
+                    return i
+
+            for i, name in enumerate(names):
+                normalized_name = self._normalize_text(name)
+                if keyword_alias in normalized_name:
+                    return i
 
         return None
 
