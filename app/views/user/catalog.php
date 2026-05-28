@@ -80,12 +80,18 @@ $meta = $labels[$type] ?? $labels['drug'];
             box-shadow: var(--shadow-sm);
             transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
         }
+        .catalog-dataset-pill {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            border: 1px solid var(--line); border-radius: 14px;
+            background: var(--card); color: var(--primary); padding: 13px 14px;
+            font-weight: 900; box-shadow: var(--shadow-sm); white-space: nowrap;
+        }
         .catalog-toolbar input:focus, .catalog-toolbar select:focus {
             border-color: rgba(var(--primary-rgb), .45);
             box-shadow: 0 0 0 4px var(--primary-light);
         }
         .catalog-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; padding: 18px;
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; padding: 18px;
         }
         .catalog-item {
             min-height: 92px; padding: 14px; border: 1px solid var(--line); border-radius: 16px;
@@ -119,6 +125,29 @@ $meta = $labels[$type] ?? $labels['drug'];
             color: var(--primary); font-size: 12px; font-weight: 900;
         }
         .catalog-mol-link:hover { color: var(--pink); transform: translateX(2px); }
+        .catalog-mol-img {
+            width: 100%; max-width: 210px; height: 150px; object-fit: contain;
+            display: block; margin-top: 10px; border-radius: 14px;
+            background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+        }
+        .protein-preview {
+            margin-top: 10px; border-radius: 14px; border: 1px solid var(--line);
+            background:
+                radial-gradient(circle at 25% 25%, rgba(236,72,153,.18), transparent 28%),
+                radial-gradient(circle at 78% 30%, rgba(99,102,241,.16), transparent 26%),
+                linear-gradient(135deg, var(--card), var(--bg-soft));
+            padding: 10px; overflow: hidden;
+        }
+        .protein-ribbon {
+            width: 100%; height: 92px; display: block;
+        }
+        .protein-sequence {
+            display: block; margin-top: 8px; padding: 8px 10px; border-radius: 10px;
+            background: var(--bg-soft); border: 1px solid var(--line);
+            font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 10.5px; font-weight: 800; line-height: 1.45; color: var(--text-muted);
+            word-break: break-all; max-height: 58px; overflow: hidden;
+        }
         .catalog-state { padding: 38px; text-align: center; color: var(--text-muted); font-weight: 900; }
         .catalog-error {
             margin: 18px; padding: 18px; border-radius: 16px;
@@ -149,11 +178,8 @@ $meta = $labels[$type] ?? $labels['drug'];
     <section class="ml-card catalog-card">
         <div class="catalog-toolbar">
             <input id="searchInput" placeholder="Tìm theo tên hoặc mã...">
-            <select id="datasetSelect">
-                <option <?= $dataset === 'B-dataset' ? 'selected' : '' ?>>B-dataset</option>
-                <option <?= $dataset === 'C-dataset' ? 'selected' : '' ?>>C-dataset</option>
-                <option <?= $dataset === 'F-dataset' ? 'selected' : '' ?>>F-dataset</option>
-            </select>
+            <input type="hidden" id="datasetSelect" value="<?= e($dataset) ?>">
+            <span class="catalog-dataset-pill"><i class="bi bi-database-fill"></i> <span id="catalogDatasetPill"><?= e($dataset) ?></span></span>
             <select id="typeSelect">
                 <option value="drug" <?= $type === 'drug' ? 'selected' : '' ?>>Thuốc</option>
                 <option value="disease" <?= $type === 'disease' ? 'selected' : '' ?>>Bệnh</option>
@@ -173,8 +199,40 @@ const typeMeta = {
 };
 let allItems = [];
 
+const savedDataset = localStorage.getItem('ml-dataset');
+const hasDatasetParam = new URLSearchParams(window.location.search).has('dataset');
+if(!hasDatasetParam && ['B-dataset','C-dataset','F-dataset'].includes(savedDataset)){
+    document.getElementById('datasetSelect').value = savedDataset;
+}
+
 function esc(v){
     return String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function molImg(smiles){
+    return `${API_BASE}/render_smiles?smi=${encodeURIComponent(smiles)}`;
+}
+
+function proteinRibbonSvg(sequence){
+    const seq = String(sequence || '');
+    let seed = 0;
+    for(let i=0;i<seq.length;i++)seed = (seed + seq.charCodeAt(i) * (i + 3)) % 9973;
+    const points = [];
+    for(let i=0;i<9;i++){
+        const x = 12 + i * 34;
+        const y = 46 + Math.sin((i + seed % 7) * 1.05) * 24;
+        points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+    const circles = points.map((p,i)=>{
+        const [x,y] = p.split(',');
+        const color = i % 3 === 0 ? '#ec4899' : (i % 3 === 1 ? '#6366f1' : '#10b981');
+        return `<circle cx="${x}" cy="${y}" r="${i % 2 ? 5 : 7}" fill="${color}" opacity=".9"/>`;
+    }).join('');
+    return `<svg class="protein-ribbon" viewBox="0 0 300 92" preserveAspectRatio="none" aria-label="Protein structure preview">
+        <path d="M${points.join(' L')}" fill="none" stroke="#ec4899" stroke-width="7" stroke-linecap="round" opacity=".28"/>
+        <path d="M${points.join(' L')}" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round"/>
+        ${circles}
+    </svg>`;
 }
 
 function normalizeItems(data){
@@ -226,10 +284,19 @@ function renderCatalog(){
                 <b>${esc(item.name || item.label || item.value || item.id)}</b>
                 <small>#${idx + 1}${item.id ? ' · ' + esc(item.id) : ''}</small>
                 ${type === 'drug' && item.smiles ? `
+                    <img class="catalog-mol-img" src="${molImg(item.smiles)}" alt="Molecular structure" loading="lazy">
                     <code class="catalog-smiles">${esc(item.smiles)}</code>
                     <a class="catalog-mol-link" href="https://molview.org/?smiles=${encodeURIComponent(item.smiles)}" target="_blank" rel="noopener">
                         <i class="bi bi-box-arrow-up-right"></i> Xem cấu trúc 3D
                     </a>
+                ` : ''}
+                ${type === 'protein' ? `
+                    <div class="protein-preview">
+                        ${proteinRibbonSvg(item.sequence || item.name || item.id)}
+                        <small>Sequence length: ${Number(item.sequence_length || String(item.sequence || '').length || 0).toLocaleString('en-US')} AA${item.node_id ? ' - Node ' + esc(item.node_id) : ''}</small>
+                    </div>
+                    ${item.sequence ? `<code class="protein-sequence">${esc(item.sequence)}</code>` : ''}
+                    ${item.id ? `<a class="catalog-mol-link" href="https://alphafold.ebi.ac.uk/entry/${encodeURIComponent(item.id)}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Protein 3D AlphaFold</a>` : ''}
                 ` : ''}
             </div>
         </article>
@@ -237,11 +304,17 @@ function renderCatalog(){
 }
 
 function syncUrl(){
+    const dataset = document.getElementById('datasetSelect').value;
+    localStorage.setItem('ml-dataset', dataset);
+    const pill = document.getElementById('catalogDatasetPill');
+    if(pill)pill.textContent = dataset;
     const url = new URL(window.location.href);
     url.searchParams.set('action', 'catalog');
     url.searchParams.set('type', document.getElementById('typeSelect').value);
-    url.searchParams.set('dataset', document.getElementById('datasetSelect').value);
+    url.searchParams.set('dataset', dataset);
     window.history.replaceState(null, '', url.toString());
+    const back = document.querySelector('.catalog-back');
+    if(back)back.href = `index.php?action=dashboard&dataset=${encodeURIComponent(dataset)}`;
 }
 
 function showError(err){
@@ -260,6 +333,7 @@ document.getElementById('typeSelect').addEventListener('change', () => {
     loadCatalog().catch(showError);
 });
 
+syncUrl();
 loadCatalog().catch(showError);
 </script>
 </body>

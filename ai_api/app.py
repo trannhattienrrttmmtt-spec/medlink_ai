@@ -295,6 +295,15 @@ def find_smiles_for_drug(drug_name, dataset=DEFAULT_DATASET):
     return mp.get(normalize_key(drug_name), "")
 
 
+def load_protein_info_rows(dataset=DEFAULT_DATASET):
+    dataset = clean_dataset(dataset)
+    dpath = dataset_path(dataset)
+    protein_file = find_file_case_insensitive(dpath, ["ProteinInformation.csv"])
+    if not protein_file or not Path(protein_file).exists():
+        return []
+    return read_csv_rows(protein_file)
+
+
 def list_protein_candidates(dataset=DEFAULT_DATASET, limit=5000):
     dataset = clean_dataset(dataset)
     dpath = dataset_path(dataset)
@@ -318,6 +327,7 @@ def list_protein_candidates(dataset=DEFAULT_DATASET, limit=5000):
 
     proteins = []
     seen = set()
+    protein_info = load_protein_info_rows(dataset)
     for i, name in enumerate(all_nodes[drug_count + disease_count:]):
         if not name:
             continue
@@ -325,7 +335,20 @@ def list_protein_candidates(dataset=DEFAULT_DATASET, limit=5000):
         if key in seen:
             continue
         seen.add(key)
-        proteins.append({"id": f"P{i}", "name": name, "label": name, "value": name})
+        info = protein_info[i] if i < len(protein_info) else {}
+        protein_id = normalize_text(info.get("id", "")) or f"P{i}"
+        sequence = normalize_text(info.get("sequence", ""))
+        proteins.append(
+            {
+                "id": protein_id,
+                "node_id": name,
+                "name": name,
+                "label": name,
+                "value": name,
+                "sequence": sequence,
+                "sequence_length": len(sequence),
+            }
+        )
         if len(proteins) >= limit:
             break
 
@@ -1688,9 +1711,12 @@ def disease_options():
         options.append(
             {
                 "id": x.get("id", ""),
+                "node_id": x.get("node_id", ""),
                 "name": x.get("name", ""),
                 "label": x.get("name", ""),
                 "value": x.get("name", ""),
+                "sequence": x.get("sequence", ""),
+                "sequence_length": x.get("sequence_length", 0),
             }
         )
 

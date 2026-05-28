@@ -234,6 +234,36 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
     padding: 10px 12px;
     font-weight: 800;
 }
+.global-dataset-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 38px;
+    padding: 5px 8px 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--card);
+    box-shadow: 0 10px 24px rgba(15,23,42,.06);
+}
+.global-dataset-control label {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .7px;
+}
+.global-dataset-control select {
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font-weight: 900;
+    min-width: 118px;
+    cursor: pointer;
+}
+.global-dataset-control i {
+    color: var(--primary);
+}
 .dataset-sparsity-pill {
     display: inline-flex;
     align-items: center;
@@ -349,6 +379,8 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
 @media(max-width:900px){
     .full-network-toolbar { grid-template-columns: 1fr; }
     .full-network-metrics { grid-template-columns: 1fr 1fr; }
+    .global-dataset-control { width: 100%; justify-content: space-between; }
+    .global-dataset-control select { min-width: 0; }
 }
 .ai-pct {
     font-weight: 800;
@@ -890,6 +922,15 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                 </div>
             </div>
             <div class="ml-user">
+                <div class="global-dataset-control" title="Dataset dùng chung cho toàn bộ dashboard">
+                    <i class="bi bi-database-fill"></i>
+                    <label for="globalDataset">Dataset</label>
+                    <select id="globalDataset">
+                        <option>B-dataset</option>
+                        <option>C-dataset</option>
+                        <option>F-dataset</option>
+                    </select>
+                </div>
                 <button id="themeToggle" style="width:38px;height:38px;border-radius:50%;background:var(--bg-soft);border:1px solid var(--line);display:grid;place-items:center;cursor:pointer;font-size:16px;color:var(--text);transition:all 0.3s;" title="Đổi sáng/tối">
                     <i class="bi bi-moon-fill"></i>
                 </button>
@@ -958,11 +999,7 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                         <small style="display:block;color:var(--text-muted);font-weight:800;">Chọn dataset để xem quy mô node và association</small>
                     </div>
                     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                        <select id="datasetSummarySelect">
-                            <option>B-dataset</option>
-                            <option>C-dataset</option>
-                            <option>F-dataset</option>
-                        </select>
+                        <span class="dataset-sparsity-pill"><i class="bi bi-database"></i> Dataset: <span id="benchmarkDatasetLabel">B-dataset</span></span>
                         <span class="dataset-sparsity-pill"><i class="bi bi-percent"></i> Sparsity: <span id="datasetSparsityValue">0.1144</span></span>
                     </div>
                 </div>
@@ -1028,14 +1065,6 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                         <div class="ml-form">
                             <div class="ml-row">
                                 <div class="ml-field">
-                                    <label>Dataset</label>
-                                    <select id="pDataset">
-                                        <option>B-dataset</option>
-                                        <option>C-dataset</option>
-                                        <option>F-dataset</option>
-                                    </select>
-                                </div>
-                                <div class="ml-field">
                                     <label>Kiểu phân tích</label>
                                     <select id="pType">
                                         <option value="drug">Thuốc → Bệnh</option>
@@ -1070,18 +1099,10 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                     </div>
                     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">Nhập tên bệnh mới mục tiêu và chọn các triệu chứng tương ứng từ tập dữ liệu. Thuật toán tạo sinh sẽ mô phỏng biến cấu trúc phân tử (SMILES) để tạo ra các ứng viên thuốc tối ưu lý thuyết.</p>
                     <div class="ml-form">
-                        <div style="display:grid;grid-template-columns:1.2fr 0.8fr;gap:12px">
+                        <div style="display:grid;grid-template-columns:1fr;gap:12px">
                             <div class="ml-field">
                                 <label>Tên bệnh lý chỉ định</label>
                                 <input id="gDisease" placeholder="VD: Novel Respiratory disease, Long COVID...">
-                            </div>
-                            <div class="ml-field">
-                                <label>Dataset nguồn</label>
-                                <select id="gDataset">
-                                    <option>B-dataset</option>
-                                    <option>C-dataset</option>
-                                    <option>F-dataset</option>
-                                </select>
                             </div>
                         </div>
                         <div class="ml-field">
@@ -1251,6 +1272,44 @@ let datasetSummaryRows=[...datasetSummaryFallback];
 let datasetSummaryChartInst=null;
 let fullNetworkInst=null;
 function fmtNum(v){return Number(v||0).toLocaleString('en-US')}
+function validDataset(v){
+    return ['B-dataset','C-dataset','F-dataset'].includes(v);
+}
+function initGlobalDataset(){
+    const select=$('globalDataset');
+    if(!select)return;
+    const params=new URLSearchParams(window.location.search);
+    const fromUrl=params.get('dataset');
+    const saved=localStorage.getItem('ml-dataset');
+    const dataset=validDataset(fromUrl)?fromUrl:(validDataset(saved)?saved:'B-dataset');
+    select.value=dataset;
+}
+function currentDataset(){
+    return $('globalDataset')?.value || 'B-dataset';
+}
+function setCurrentDataset(dataset){
+    const select=$('globalDataset');
+    if(select)select.value=dataset;
+    localStorage.setItem('ml-dataset',dataset);
+    refreshDatasetViews(true);
+}
+function resetFullNetworkPrompt(){
+    if(fullNetworkInst){fullNetworkInst.destroy();fullNetworkInst=null;}
+    const box=$('fullDrugDiseaseNetwork');
+    const detail=$('fullNetworkDetail');
+    const status=$('fullNetworkStatus');
+    if(box)box.innerHTML='';
+    if(detail){detail.style.display='none';detail.innerHTML='';}
+    if(status)status.innerHTML=`Dataset hiện tại: <b>${esc(currentDataset())}</b>. Bấm Vẽ graph để tải mạng đầy đủ.`;
+}
+function refreshDatasetViews(reloadOptions=true){
+    const dataset=currentDataset();
+    localStorage.setItem('ml-dataset',dataset);
+    if($('benchmarkDatasetLabel'))$('benchmarkDatasetLabel').textContent=dataset;
+    renderDatasetSummaryChart(dataset);
+    resetFullNetworkPrompt();
+    if(reloadOptions)loadOpts();
+}
 function renderDatasetSummary(rows){
     const body=$('datasetSummaryBody');
     if(!body)return;
@@ -1269,18 +1328,16 @@ function renderDatasetSummary(rows){
     `).join('');
     body.querySelectorAll('[data-summary-dataset]').forEach(row=>{
         row.onclick=()=>{
-            const select=$('datasetSummarySelect');
-            if(select)select.value=row.dataset.summaryDataset;
-            renderDatasetSummaryChart(row.dataset.summaryDataset);
+            setCurrentDataset(row.dataset.summaryDataset);
         };
     });
-    const selected=$('datasetSummarySelect')?.value || datasetSummaryRows[0]?.dataset || 'B-dataset';
-    renderDatasetSummaryChart(selected);
+    renderDatasetSummaryChart(currentDataset());
 }
 function renderDatasetSummaryChart(datasetName){
     const canvas=$('datasetSummaryChart');
     if(!canvas||!window.Chart)return;
     const row=datasetSummaryRows.find(r=>r.dataset===datasetName)||datasetSummaryRows[0]||datasetSummaryFallback[0];
+    if($('benchmarkDatasetLabel'))$('benchmarkDatasetLabel').textContent=row.dataset;
     if($('datasetSparsityValue'))$('datasetSparsityValue').textContent=Number(row.sparsity||0).toFixed(4);
     if(datasetSummaryChartInst)datasetSummaryChartInst.destroy();
     datasetSummaryChartInst=new Chart(canvas,{
@@ -1331,7 +1388,7 @@ async function loadFullDrugDiseaseNetwork(){
     const status=$('fullNetworkStatus');
     const detail=$('fullNetworkDetail');
     if(!box||!status||!window.vis)return;
-    const dataset=$('datasetSummarySelect')?.value||'B-dataset';
+    const dataset=currentDataset();
     const relation=$('fullNetworkRelation')?.value||'drug_disease';
     const model=$('fullNetworkModel')?.value||'both';
     status.innerHTML=`<i class="bi bi-hourglass-split"></i> Đang tải mạng ${esc(dataset)}...`;
@@ -1435,7 +1492,7 @@ function skeleton(rows=3){return `<div style="display:flex;flex-direction:column
 
 // Load selection lists on load or change
 async function loadOpts(){
-    const ds=$('pDataset').value,type=$('pType').value;
+    const ds=currentDataset(),type=$('pType').value;
     $('linkDrugs').href=`index.php?action=catalog&type=drug&dataset=${encodeURIComponent(ds)}`;
     $('linkDiseases').href=`index.php?action=catalog&type=disease&dataset=${encodeURIComponent(ds)}`;
     $('linkProteins').href=`index.php?action=catalog&type=protein&dataset=${encodeURIComponent(ds)}`;
@@ -1458,8 +1515,7 @@ async function loadOpts(){
         try{const pInfo=await get(`/protein_count?dataset=${encodeURIComponent(ds)}`);$('sProteins').textContent=pInfo.count||'—'}catch(e){$('sProteins').textContent='—'}
         
         // Load symptoms based on generation dataset selection
-        const gDs=$('gDataset').value;
-        const dis=await get(`/disease_options?dataset=${encodeURIComponent(gDs)}&limit=700`);
+        const dis=await get(`/disease_options?dataset=${encodeURIComponent(ds)}&limit=700`);
         const disList=dis.items||dis.options||dis.diseases||[];
         
         // Save current checked symptoms
@@ -1629,7 +1685,7 @@ $('btnPredict').onclick=async()=>{
     try{
         const topK=Math.max(1,Math.min(50,+$('pTopK').value||9));
         $('pTopK').value=topK;
-        const data=await post('/predict_compare',{dataset:$('pDataset').value,input_type:$('pType').value,keyword:kw,top_k:topK});
+        const data=await post('/predict_compare',{dataset:currentDataset(),input_type:$('pType').value,keyword:kw,top_k:topK});
         renderTbl('boxCur',data.current);
         renderTbl('boxOrig',data.original);
         renderProteinPanel(data.graph);
@@ -1639,7 +1695,7 @@ $('btnPredict').onclick=async()=>{
         if(data.ok){
             $('pStatus').innerHTML='<span style="color:var(--green)"><i class="bi bi-check-circle-fill"></i> Hoàn tất dự đoán liên kết.</span>';
             // Save search to local PHP history DB silently
-            fetch('index.php?action=save_history&input_type='+encodeURIComponent($('pType').value)+'&keyword='+encodeURIComponent(kw)+'&dataset='+encodeURIComponent($('pDataset').value));
+            fetch('index.php?action=save_history&input_type='+encodeURIComponent($('pType').value)+'&keyword='+encodeURIComponent(kw)+'&dataset='+encodeURIComponent(currentDataset()));
         } else {
             $('pStatus').innerHTML='<span style="color:var(--red)"><i class="bi bi-exclamation-circle-fill"></i> Lỗi mô hình AI.</span>';
         }
@@ -1659,7 +1715,7 @@ $('btnGenerate').onclick=async()=>{
     }
     $('genResult').innerHTML=skeleton(3);
     try{
-        const data=await post('/generate_drug',{dataset:$('gDataset').value,disease:dis,symptoms,n:+$('gN').value||10});
+        const data=await post('/generate_drug',{dataset:currentDataset(),disease:dis,symptoms,n:+$('gN').value||10});
         if(!data.ok||!(data.results||[]).length){
             $('genResult').innerHTML='<div class="ml-alert"><i class="bi bi-x-circle-fill"></i> Không sinh được ứng viên thuốc. Vui lòng chọn các triệu chứng lâm sàng khác.</div>';
             return;
@@ -1713,13 +1769,10 @@ function updateSymTags(){
 document.addEventListener('change',e=>{if(e.target.classList.contains('gsym-check'))updateSymTags()});
 
 // Selection bindings
-$('pDataset').onchange=loadOpts;
+$('globalDataset')?.addEventListener('change',()=>refreshDatasetViews(true));
 $('pType').onchange=loadOpts;
-$('gDataset').onchange=loadOpts;
-$('datasetSummarySelect')?.addEventListener('change',e=>{
-    renderDatasetSummaryChart(e.target.value);
-});
 $('btnLoadFullNetwork')?.addEventListener('click',loadFullDrugDiseaseNetwork);
+initGlobalDataset();
 loadDatasetSummary();
 loadOpts();
 
