@@ -332,6 +332,243 @@ def list_protein_candidates(dataset=DEFAULT_DATASET, limit=5000):
     return proteins
 
 
+def count_csv_data_rows(file_path, has_header=True):
+    if not file_path or not Path(file_path).exists():
+        return 0
+    count = 0
+    with open(file_path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f)
+        for i, row in enumerate(reader):
+            if has_header and i == 0:
+                continue
+            if row and any(str(c).strip() for c in row):
+                count += 1
+    return count
+
+
+def build_dataset_summary():
+    rows = []
+    for dataset in DATASETS:
+        dpath = dataset_path(dataset)
+        drug_file = find_file_case_insensitive(dpath, ["DrugInformation.csv"])
+        disease_file = find_file_case_insensitive(dpath, ["DiseaseFeature.csv"])
+        protein_file = find_file_case_insensitive(dpath, ["ProteinInformation.csv"])
+        drdi_file = find_file_case_insensitive(dpath, ["DrugDiseaseAssociationNumber.csv"])
+        drpr_file = find_file_case_insensitive(dpath, ["DrugProteinAssociationNumber.csv"])
+        dipr_file = find_file_case_insensitive(dpath, ["ProteinDiseaseAssociationNumber.csv"])
+
+        drugs = count_csv_data_rows(drug_file, has_header=True)
+        diseases = count_csv_data_rows(disease_file, has_header=False)
+        proteins = count_csv_data_rows(protein_file, has_header=True)
+        drug_disease = count_csv_data_rows(drdi_file, has_header=True)
+        drug_protein = count_csv_data_rows(drpr_file, has_header=True)
+        disease_protein = count_csv_data_rows(dipr_file, has_header=True)
+        sparsity_raw = drug_disease / (drugs * diseases) if drugs and diseases else 0
+        sparsity = int(sparsity_raw * 10000) / 10000
+
+        rows.append(
+            {
+                "dataset": dataset,
+                "drugs": drugs,
+                "diseases": diseases,
+                "proteins": proteins,
+                "drug_disease_associations": drug_disease,
+                "drug_protein_associations": drug_protein,
+                "disease_protein_associations": disease_protein,
+                "sparsity": sparsity,
+            }
+        )
+    return rows
+
+
+def get_ordered_disease_names(dataset=DEFAULT_DATASET):
+    dataset = clean_dataset(dataset)
+    dpath = dataset_path(dataset)
+    allnode_file = get_allnode_file(dataset)
+    disease_feature_path = find_file_case_insensitive(dpath, ["DiseaseFeature.csv"])
+    if not allnode_file or not Path(allnode_file).exists() or not disease_feature_path:
+        return [x["name"] for x in list_disease_candidates(dataset, limit=10000)]
+
+    drug_count = get_model_drug_count(dataset)
+    disease_count = count_csv_data_rows(disease_feature_path, has_header=False)
+    all_nodes = []
+    with open(allnode_file, "r", encoding="utf-8-sig", newline="") as f:
+        for row in csv.reader(f):
+            if len(row) >= 2:
+                all_nodes.append(row[1].strip())
+            elif row:
+                all_nodes.append(row[0].strip())
+    names = all_nodes[drug_count:drug_count + disease_count]
+    return [name for name in names if name]
+
+
+def get_ordered_protein_names(dataset=DEFAULT_DATASET):
+    dataset = clean_dataset(dataset)
+    dpath = dataset_path(dataset)
+    allnode_file = get_allnode_file(dataset)
+    disease_feature_path = find_file_case_insensitive(dpath, ["DiseaseFeature.csv"])
+    if not allnode_file or not Path(allnode_file).exists() or not disease_feature_path:
+        return [x["name"] for x in list_protein_candidates(dataset, limit=10000)]
+
+    drug_count = get_model_drug_count(dataset)
+    disease_count = count_csv_data_rows(disease_feature_path, has_header=False)
+    all_nodes = []
+    with open(allnode_file, "r", encoding="utf-8-sig", newline="") as f:
+        for row in csv.reader(f):
+            if len(row) >= 2:
+                all_nodes.append(row[1].strip())
+            elif row:
+                all_nodes.append(row[0].strip())
+    names = all_nodes[drug_count + disease_count:]
+    return [name for name in names if name]
+
+
+def make_network_node(node_type, idx, name):
+    config = {
+        "drug": ("Drug", "#6366f1", "#4338ca"),
+        "disease": ("Disease", "#10b981", "#047857"),
+        "protein": ("Protein", "#ec4899", "#be185d"),
+    }
+    label, bg, border = config.get(node_type, ("Node", "#8b5cf6", "#6d28d9"))
+    return {
+        "id": f"{node_type}_{idx}",
+        "label": name,
+        "title": f"{label} #{idx}<br>{name}",
+        "group": node_type,
+        "shape": "dot",
+        "size": 10,
+        "color": {"background": bg, "border": border},
+    }
+
+
+def build_association_network(dataset=DEFAULT_DATASET, relation="drug_disease", limit=1500, model_view="both"):
+    dataset = clean_dataset(dataset)
+    relation = normalize_key(relation) or "drug_disease"
+    if relation not in {"drug_disease", "drug_protein", "disease_protein"}:
+        relation = "drug_disease"
+
+    model_view = normalize_key(model_view) or "both"
+    if model_view not in {"current", "original", "both"}:
+        model_view = "both"
+
+    dpath = dataset_path(dataset)
+    drugs = load_drugs(dataset)
+    diseases = get_ordered_disease_names(dataset)
+    proteins = get_ordered_protein_names(dataset)
+
+    relation_config = {
+        "drug_disease": {
+            "file": "DrugDiseaseAssociationNumber.csv",
+            "source_type": "drug",
+            "target_type": "disease",
+            "source_names": [d.get("name", f"Drug {i}") for i, d in enumerate(drugs)],
+            "target_names": diseases,
+            "edge": "Drug-Disease",
+        },
+        "drug_protein": {
+            "file": "DrugProteinAssociationNumber.csv",
+            "source_type": "drug",
+            "target_type": "protein",
+            "source_names": [d.get("name", f"Drug {i}") for i, d in enumerate(drugs)],
+            "target_names": proteins,
+            "edge": "Drug-Protein",
+        },
+        "disease_protein": {
+            "file": "ProteinDiseaseAssociationNumber.csv",
+            "source_type": "disease",
+            "target_type": "protein",
+            "source_names": diseases,
+            "target_names": proteins,
+            "edge": "Disease-Protein",
+        },
+    }[relation]
+
+    assoc_file = find_file_case_insensitive(dpath, [relation_config["file"]])
+
+    if not assoc_file or not Path(assoc_file).exists():
+        return {"nodes": [], "edges": [], "total_edges": 0}
+
+    edge_color = {
+        "current": "#10b981",
+        "original": "#f59e0b",
+        "both": "#8b5cf6",
+    }[model_view]
+    edge_label = {
+        "current": "AMDGT cải tiến",
+        "original": "AMDGT gốc",
+        "both": "Dữ liệu dùng chung cho 2 mô hình",
+    }[model_view]
+
+    used_source = set()
+    used_target = set()
+    edges = []
+    total_edges = 0
+
+    with open(assoc_file, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f)
+        for row_idx, row in enumerate(reader):
+            if row_idx == 0:
+                continue
+            if len(row) < 2:
+                continue
+            try:
+                left_idx = int(float(row[0]))
+                right_idx = int(float(row[1]))
+            except Exception:
+                continue
+
+            if relation == "disease_protein":
+                source_idx, target_idx = left_idx, right_idx
+            else:
+                source_idx, target_idx = left_idx, right_idx
+
+            if source_idx >= len(relation_config["source_names"]) or target_idx >= len(relation_config["target_names"]):
+                continue
+            total_edges += 1
+            if limit and len(edges) >= limit:
+                continue
+            source_id = f"{relation_config['source_type']}_{source_idx}"
+            target_id = f"{relation_config['target_type']}_{target_idx}"
+            used_source.add(source_idx)
+            used_target.add(target_idx)
+            source_name = relation_config["source_names"][source_idx]
+            target_name = relation_config["target_names"][target_idx]
+            edges.append(
+                {
+                    "id": f"{relation}_{source_idx}_{target_idx}",
+                    "from": source_id,
+                    "to": target_id,
+                    "label": "",
+                    "title": f"{source_name} ↔ {target_name}<br>{relation_config['edge']}<br>{edge_label}",
+                    "color": {"color": edge_color, "highlight": edge_color},
+                    "width": 1.2,
+                    "model": model_view,
+                }
+            )
+
+    nodes = []
+    for idx in sorted(used_source):
+        nodes.append(make_network_node(relation_config["source_type"], idx, relation_config["source_names"][idx]))
+    for idx in sorted(used_target):
+        nodes.append(make_network_node(relation_config["target_type"], idx, relation_config["target_names"][idx]))
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "total_edges": total_edges,
+        "rendered_edges": len(edges),
+        "rendered_nodes": len(nodes),
+        "model_view": model_view,
+        "relation": relation,
+        "relation_label": relation_config["edge"],
+        "note": "Benchmark associations are shared by AMDGT gốc and AMDGT cải tiến; model differences are in prediction/topology, not raw dataset edges.",
+    }
+
+
+def build_drug_disease_network(dataset=DEFAULT_DATASET, limit=1500, model_view="both"):
+    return build_association_network(dataset, relation="drug_disease", limit=limit, model_view=model_view)
+
+
 def list_disease_candidates(dataset=DEFAULT_DATASET, limit=1000):
     dataset = clean_dataset(dataset)
 
@@ -1504,6 +1741,22 @@ def protein_options():
             "proteins": options,
         }
     )
+
+
+@app.route("/dataset_summary", methods=["GET"])
+def dataset_summary():
+    rows = build_dataset_summary()
+    return jsonify({"ok": True, "count": len(rows), "items": rows})
+
+
+@app.route("/dataset_drug_disease_network", methods=["GET"])
+def dataset_drug_disease_network():
+    dataset = clean_dataset(request.args.get("dataset", DEFAULT_DATASET))
+    limit = safe_int(request.args.get("limit", 0), 0, 0, 100000)
+    model_view = request.args.get("model", "both")
+    relation = request.args.get("relation", "drug_disease")
+    graph = build_association_network(dataset, relation=relation, limit=limit, model_view=model_view)
+    return jsonify({"ok": True, "dataset": dataset, **graph})
 
 
 @app.route("/predict", methods=["POST", "OPTIONS"])

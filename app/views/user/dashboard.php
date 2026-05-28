@@ -141,6 +141,215 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
 .ai-protein-chip i {
     color: #818cf8;
 }
+.dataset-summary-card {
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+.dataset-summary-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+.dataset-summary-head .left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.dataset-summary-head .icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    color: var(--primary);
+    background: var(--primary-light);
+    font-size: 20px;
+}
+.dataset-summary-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+}
+.dataset-summary-table {
+    width: 100%;
+    min-width: 880px;
+    border-collapse: collapse;
+    background: var(--card);
+}
+.dataset-summary-table th,
+.dataset-summary-table td {
+    padding: 14px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+    font-weight: 800;
+    white-space: nowrap;
+}
+.dataset-summary-table th {
+    color: var(--text-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .7px;
+    background: var(--bg-soft);
+}
+.dataset-summary-table tr:last-child td {
+    border-bottom: 0;
+}
+.dataset-summary-table .ds-name {
+    color: var(--primary);
+}
+.dataset-summary-table .ds-sparsity {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    color: var(--pink);
+}
+.dataset-summary-table tbody tr {
+    cursor: pointer;
+    transition: background .2s ease;
+}
+.dataset-summary-table tbody tr:hover {
+    background: var(--primary-light);
+}
+.dataset-chart-panel {
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--bg-soft);
+}
+.dataset-chart-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.dataset-chart-toolbar select {
+    min-width: 180px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    padding: 10px 12px;
+    font-weight: 800;
+}
+.dataset-sparsity-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 9px 13px;
+    background: rgba(236,72,153,.12);
+    color: var(--pink);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 900;
+}
+.dataset-chart-box {
+    height: 320px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px;
+}
+.full-network-panel {
+    margin-top: 16px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--card);
+    overflow: hidden;
+}
+.full-network-toolbar {
+    display: grid;
+    grid-template-columns: 1fr 180px 180px 140px;
+    gap: 10px;
+    align-items: end;
+    padding: 14px;
+    background: var(--bg-soft);
+    border-bottom: 1px solid var(--line);
+}
+.full-network-toolbar label {
+    display: block;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .7px;
+    margin-bottom: 6px;
+}
+.full-network-toolbar select,
+.full-network-toolbar input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    padding: 10px 12px;
+    font-weight: 800;
+}
+.full-network-status {
+    padding: 10px 14px;
+    color: var(--text-muted);
+    font-weight: 800;
+    border-bottom: 1px solid var(--line);
+}
+.full-network-detail {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--primary-light);
+    color: var(--text);
+    font-weight: 800;
+    display: none;
+}
+.full-network-detail b {
+    color: var(--primary);
+}
+.full-network-detail small {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-weight: 800;
+}
+.full-network-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(135deg, var(--card), var(--bg-soft));
+}
+.full-network-metric {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: var(--card);
+}
+.full-network-metric small {
+    display: block;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .7px;
+}
+.full-network-metric b {
+    display: block;
+    margin-top: 3px;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 900;
+}
+#fullDrugDiseaseNetwork {
+    height: 520px;
+    background:
+        radial-gradient(circle at 20% 15%, rgba(99,102,241,.08), transparent 25%),
+        radial-gradient(circle at 80% 20%, rgba(16,185,129,.08), transparent 25%),
+        var(--card);
+}
+@media(max-width:900px){
+    .full-network-toolbar { grid-template-columns: 1fr; }
+    .full-network-metrics { grid-template-columns: 1fr 1fr; }
+}
 .ai-pct {
     font-weight: 800;
     font-size: 14px;
@@ -712,6 +921,96 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
             <div class="ml-card ml-stat-card"><div class="ml-card-head"><div><small>MODELS</small><div class="ml-stat-number">2</div><small style="color:var(--text-muted); font-weight:700;">Cải tiến + Gốc AMDGT</small></div><div class="ml-stat-icon">🤖</div></div></div>
         </section>
 
+        <section class="ml-card dataset-summary-card fade-up" style="animation-delay: 0.15s">
+            <div class="dataset-summary-head">
+                <div class="left">
+                    <div class="icon"><i class="bi bi-table"></i></div>
+                    <div>
+                        <h3 style="margin:0;font-size:20px;font-weight:900;">Thông số benchmark datasets</h3>
+                        <small style="color:var(--text-muted);font-weight:800;">Tổng quan B/C/F dataset và độ thưa Drug-Disease</small>
+                    </div>
+                </div>
+                <span class="ai-badge ai-badge-cur"><i class="bi bi-database-check"></i> Dataset summary</span>
+            </div>
+            <div class="dataset-summary-table-wrap">
+                <table class="dataset-summary-table">
+                    <thead>
+                        <tr>
+                            <th>Dataset</th>
+                            <th>Drugs</th>
+                            <th>Diseases</th>
+                            <th>Proteins</th>
+                            <th>Drug-Disease associations</th>
+                            <th>Drug-Protein associations</th>
+                            <th>Disease-Protein associations</th>
+                            <th>Sparsity</th>
+                        </tr>
+                    </thead>
+                    <tbody id="datasetSummaryBody">
+                        <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Đang tải thông số dataset...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="dataset-chart-panel">
+                <div class="dataset-chart-toolbar">
+                    <div>
+                        <b style="font-size:15px;">Biểu đồ thông số theo dataset</b>
+                        <small style="display:block;color:var(--text-muted);font-weight:800;">Chọn dataset để xem quy mô node và association</small>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                        <select id="datasetSummarySelect">
+                            <option>B-dataset</option>
+                            <option>C-dataset</option>
+                            <option>F-dataset</option>
+                        </select>
+                        <span class="dataset-sparsity-pill"><i class="bi bi-percent"></i> Sparsity: <span id="datasetSparsityValue">0.1144</span></span>
+                    </div>
+                </div>
+                <div class="dataset-chart-box">
+                    <canvas id="datasetSummaryChart"></canvas>
+                </div>
+                <div class="full-network-panel">
+                    <div class="full-network-toolbar">
+                        <div>
+                            <b style="font-size:15px;">Mạng toàn bộ Drug-Disease</b>
+                            <small style="display:block;color:var(--text-muted);font-weight:800;">Từng thuốc - từng bệnh theo association trong benchmark dataset</small>
+                        </div>
+                        <div>
+                            <label>Loại liên kết</label>
+                            <select id="fullNetworkRelation">
+                                <option value="drug_disease">Drug-Disease</option>
+                                <option value="drug_protein">Drug-Protein</option>
+                                <option value="disease_protein">Disease-Protein</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Model view</label>
+                            <select id="fullNetworkModel">
+                                <option value="both">Cả 2 mô hình</option>
+                                <option value="current">AMDGT cải tiến</option>
+                                <option value="original">AMDGT gốc</option>
+                            </select>
+                        </div>
+                        <button class="ml-btn primary" id="btnLoadFullNetwork" type="button" style="height:42px;"><i class="bi bi-diagram-3-fill"></i> Vẽ graph</button>
+                    </div>
+                    <div class="full-network-status" id="fullNetworkStatus">Chọn dataset phía trên rồi bấm Vẽ graph.</div>
+                    <div class="full-network-metrics" id="fullNetworkMetrics">
+                        <div class="full-network-metric"><small>Dataset</small><b>—</b></div>
+                        <div class="full-network-metric"><small>Drugs</small><b>—</b></div>
+                        <div class="full-network-metric"><small>Diseases</small><b>—</b></div>
+                        <div class="full-network-metric"><small>Proteins</small><b>—</b></div>
+                        <div class="full-network-metric"><small>Drug-Disease</small><b>—</b></div>
+                        <div class="full-network-metric"><small>Drug-Protein</small><b>—</b></div>
+                        <div class="full-network-metric"><small>Disease-Protein</small><b>—</b></div>
+                        <div class="full-network-metric"><small>Sparsity</small><b>—</b></div>
+                        <div class="full-network-metric"><small>Graph edges</small><b>—</b></div>
+                    </div>
+                    <div class="full-network-detail" id="fullNetworkDetail"></div>
+                    <div id="fullDrugDiseaseNetwork"></div>
+                </div>
+            </div>
+        </section>
+
         <!-- Dynamic Content Grid -->
         <div class="ml-grid two fade-up" style="animation-delay: 0.2s; margin-bottom: 24px;">
             <!-- Left Side: Prediction and Generator Forms -->
@@ -942,6 +1241,194 @@ document.querySelectorAll('.ai-tab[data-tab]').forEach(b=>b.onclick=()=>{
 // API Get & Post
 async function get(p){return(await fetch(API+p)).json()}
 async function post(p,d){return(await fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})).json()}
+
+const datasetSummaryFallback=[
+    {dataset:'B-dataset',drugs:269,diseases:598,proteins:1021,drug_disease_associations:18416,drug_protein_associations:3110,disease_protein_associations:5898,sparsity:0.1144},
+    {dataset:'C-dataset',drugs:663,diseases:409,proteins:993,drug_disease_associations:2532,drug_protein_associations:3773,disease_protein_associations:10734,sparsity:0.0093},
+    {dataset:'F-dataset',drugs:593,diseases:313,proteins:2741,drug_disease_associations:1933,drug_protein_associations:3243,disease_protein_associations:54265,sparsity:0.0104}
+];
+let datasetSummaryRows=[...datasetSummaryFallback];
+let datasetSummaryChartInst=null;
+let fullNetworkInst=null;
+function fmtNum(v){return Number(v||0).toLocaleString('en-US')}
+function renderDatasetSummary(rows){
+    const body=$('datasetSummaryBody');
+    if(!body)return;
+    datasetSummaryRows=(rows&&rows.length?rows:datasetSummaryFallback);
+    body.innerHTML=datasetSummaryRows.map(r=>`
+        <tr data-summary-dataset="${esc(r.dataset)}">
+            <td class="ds-name">${esc(r.dataset)}</td>
+            <td>${fmtNum(r.drugs)}</td>
+            <td>${fmtNum(r.diseases)}</td>
+            <td>${fmtNum(r.proteins)}</td>
+            <td>${fmtNum(r.drug_disease_associations)}</td>
+            <td>${fmtNum(r.drug_protein_associations)}</td>
+            <td>${fmtNum(r.disease_protein_associations)}</td>
+            <td class="ds-sparsity">${Number(r.sparsity||0).toFixed(4)}</td>
+        </tr>
+    `).join('');
+    body.querySelectorAll('[data-summary-dataset]').forEach(row=>{
+        row.onclick=()=>{
+            const select=$('datasetSummarySelect');
+            if(select)select.value=row.dataset.summaryDataset;
+            renderDatasetSummaryChart(row.dataset.summaryDataset);
+        };
+    });
+    const selected=$('datasetSummarySelect')?.value || datasetSummaryRows[0]?.dataset || 'B-dataset';
+    renderDatasetSummaryChart(selected);
+}
+function renderDatasetSummaryChart(datasetName){
+    const canvas=$('datasetSummaryChart');
+    if(!canvas||!window.Chart)return;
+    const row=datasetSummaryRows.find(r=>r.dataset===datasetName)||datasetSummaryRows[0]||datasetSummaryFallback[0];
+    if($('datasetSparsityValue'))$('datasetSparsityValue').textContent=Number(row.sparsity||0).toFixed(4);
+    if(datasetSummaryChartInst)datasetSummaryChartInst.destroy();
+    datasetSummaryChartInst=new Chart(canvas,{
+        type:'bar',
+        data:{
+            labels:['Drugs','Diseases','Proteins','Drug-Disease','Drug-Protein','Disease-Protein'],
+            datasets:[{
+                label:row.dataset,
+                data:[
+                    row.drugs,
+                    row.diseases,
+                    row.proteins,
+                    row.drug_disease_associations,
+                    row.drug_protein_associations,
+                    row.disease_protein_associations
+                ],
+                backgroundColor:['#6366f1','#10b981','#ec4899','#f59e0b','#14b8a6','#8b5cf6'],
+                borderRadius:8,
+                borderSkipped:false
+            }]
+        },
+        options:{
+            responsive:true,
+            maintainAspectRatio:false,
+            indexAxis:'y',
+            plugins:{
+                legend:{display:false},
+                tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${fmtNum(ctx.raw)}`}},
+                title:{display:true,text:`Benchmark profile - ${row.dataset}`,color:getComputedStyle(document.documentElement).getPropertyValue('--text').trim()}
+            },
+            scales:{
+                x:{
+                    type:'logarithmic',
+                    min:1,
+                    ticks:{callback:v=>fmtNum(v),color:getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim()},
+                    grid:{color:getComputedStyle(document.documentElement).getPropertyValue('--line').trim()}
+                },
+                y:{
+                    ticks:{color:getComputedStyle(document.documentElement).getPropertyValue('--text').trim(),font:{weight:'800'}},
+                    grid:{display:false}
+                }
+            }
+        }
+    });
+}
+async function loadFullDrugDiseaseNetwork(){
+    const box=$('fullDrugDiseaseNetwork');
+    const status=$('fullNetworkStatus');
+    const detail=$('fullNetworkDetail');
+    if(!box||!status||!window.vis)return;
+    const dataset=$('datasetSummarySelect')?.value||'B-dataset';
+    const relation=$('fullNetworkRelation')?.value||'drug_disease';
+    const model=$('fullNetworkModel')?.value||'both';
+    status.innerHTML=`<i class="bi bi-hourglass-split"></i> Đang tải mạng ${esc(dataset)}...`;
+    if(detail){detail.style.display='none';detail.innerHTML='';}
+    try{
+        const data=await get(`/dataset_drug_disease_network?dataset=${encodeURIComponent(dataset)}&relation=${encodeURIComponent(relation)}&model=${encodeURIComponent(model)}&limit=0`);
+        if(!data.ok)throw new Error(data.error||'Không tải được graph');
+        const nodes=new vis.DataSet(data.nodes||[]);
+        const edges=new vis.DataSet((data.edges||[]).map(e=>({
+            ...e,
+            smooth:{type:'dynamic'},
+            arrows:{to:{enabled:false}}
+        })));
+        const options={
+            nodes:{
+                font:{size:11,face:'Plus Jakarta Sans',color:getComputedStyle(document.documentElement).getPropertyValue('--text').trim()},
+                borderWidth:2,
+                shadow:true
+            },
+            edges:{
+                selectionWidth:2,
+                smooth:{enabled:true,type:'dynamic'},
+                color:{inherit:false},
+                shadow:false
+            },
+            groups:{
+                drug:{color:{background:'#6366f1',border:'#4338ca'},shape:'dot'},
+                disease:{color:{background:'#10b981',border:'#047857'},shape:'dot'},
+                protein:{color:{background:'#ec4899',border:'#be185d'},shape:'dot'}
+            },
+            physics:{
+                enabled:true,
+                stabilization:{iterations:160,fit:true},
+                barnesHut:{gravitationalConstant:-9000,centralGravity:.18,springLength:120,springConstant:.035,damping:.25}
+            },
+            interaction:{hover:true,tooltipDelay:120,navigationButtons:true,keyboard:false}
+        };
+        if(fullNetworkInst)fullNetworkInst.destroy();
+        fullNetworkInst=new vis.Network(box,{nodes,edges},options);
+        fullNetworkInst.on('click',params=>{
+            if(!detail)return;
+            if(params.nodes?.length){
+                const id=params.nodes[0];
+                const node=nodes.get(id);
+                const connectedEdges=fullNetworkInst.getConnectedEdges(id)||[];
+                const groupLabel=node.group==='drug'?'Thuốc':(node.group==='disease'?'Bệnh':(node.group==='protein'?'Protein':'Node'));
+                detail.style.display='block';
+                detail.innerHTML=`
+                    <b>${esc(groupLabel)}: ${esc(node.label)}</b>
+                    <small>ID node: ${esc(node.id)} · Số liên kết đang hiển thị: ${fmtNum(connectedEdges.length)}</small>
+                `;
+                return;
+            }
+            if(params.edges?.length){
+                const id=params.edges[0];
+                const edge=edges.get(id);
+                const from=nodes.get(edge.from);
+                const to=nodes.get(edge.to);
+                detail.style.display='block';
+                detail.innerHTML=`
+                    <b>Liên kết: ${esc(from?.label||edge.from)} ↔ ${esc(to?.label||edge.to)}</b>
+                    <small>Loại: ${esc(data.relation_label||relation)} · Model view: ${esc(data.model_view)} · Edge ID: ${esc(edge.id)}</small>
+                `;
+                return;
+            }
+            detail.style.display='none';
+            detail.innerHTML='';
+        });
+        const metrics=$('fullNetworkMetrics');
+        if(metrics){
+            const summary=datasetSummaryRows.find(r=>r.dataset===dataset)||datasetSummaryFallback.find(r=>r.dataset===dataset)||datasetSummaryFallback[0];
+            metrics.innerHTML=`
+                <div class="full-network-metric"><small>Dataset</small><b>${esc(dataset)}</b></div>
+                <div class="full-network-metric"><small>Drugs</small><b>${fmtNum(summary.drugs)}</b></div>
+                <div class="full-network-metric"><small>Diseases</small><b>${fmtNum(summary.diseases)}</b></div>
+                <div class="full-network-metric"><small>Proteins</small><b>${fmtNum(summary.proteins)}</b></div>
+                <div class="full-network-metric"><small>Drug-Disease</small><b>${fmtNum(summary.drug_disease_associations)}</b></div>
+                <div class="full-network-metric"><small>Drug-Protein</small><b>${fmtNum(summary.drug_protein_associations)}</b></div>
+                <div class="full-network-metric"><small>Disease-Protein</small><b>${fmtNum(summary.disease_protein_associations)}</b></div>
+                <div class="full-network-metric"><small>Sparsity</small><b>${Number(summary.sparsity||0).toFixed(4)}</b></div>
+                <div class="full-network-metric"><small>Graph edges</small><b>${fmtNum(data.rendered_edges)} / ${fmtNum(data.total_edges)}</b></div>
+            `;
+        }
+        status.innerHTML=`<i class="bi bi-check-circle-fill" style="color:var(--green)"></i> ${esc(dataset)} · ${esc(data.relation_label||relation)} · ${fmtNum(data.rendered_nodes)} nodes · ${fmtNum(data.rendered_edges)} / ${fmtNum(data.total_edges)} edges · ${esc(data.model_view)}`;
+    }catch(e){
+        status.innerHTML=`<i class="bi bi-exclamation-triangle-fill" style="color:var(--red)"></i> Không tải được graph. Hãy restart AI API nếu vừa cập nhật code.`;
+        console.error(e);
+    }
+}
+async function loadDatasetSummary(){
+    try{
+        const data=await get('/dataset_summary');
+        renderDatasetSummary(data.ok?(data.items||[]):datasetSummaryFallback);
+    }catch(e){
+        renderDatasetSummary(datasetSummaryFallback);
+    }
+}
 
 // Skeleton loader helper
 function skeleton(rows=3){return `<div style="display:flex;flex-direction:column;gap:10px">${Array(rows).fill('<div class="skeleton" style="height:52px"></div>').join('')}</div>`}
@@ -1229,6 +1716,11 @@ document.addEventListener('change',e=>{if(e.target.classList.contains('gsym-chec
 $('pDataset').onchange=loadOpts;
 $('pType').onchange=loadOpts;
 $('gDataset').onchange=loadOpts;
+$('datasetSummarySelect')?.addEventListener('change',e=>{
+    renderDatasetSummaryChart(e.target.value);
+});
+$('btnLoadFullNetwork')?.addEventListener('click',loadFullDrugDiseaseNetwork);
+loadDatasetSummary();
 loadOpts();
 
 // === 3D VANTA BACKGROUND ===
