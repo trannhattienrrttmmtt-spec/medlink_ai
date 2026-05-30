@@ -35,6 +35,7 @@
         
         body.ml-auth-body {
             background: linear-gradient(135deg, #eff6ff 0%, #ffffff 65%, #f8fafc 100%);
+            color-scheme: light;
         }
         
         .ml-auth-container {
@@ -88,15 +89,31 @@
             font-weight: 600;
         }
         .input-group input {
-            background: #f8fafc;
+            background: #f8fafc !important;
             border: 1px solid #cbd5e1;
             border-radius: 14px;
-            color: #0f172a;
+            color: #0f172a !important;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            -webkit-text-fill-color: #0f172a;
         }
         .input-group input:focus {
             border-color: #6366f1;
+            background: #ffffff !important;
             box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
+        }
+        .input-group input::placeholder {
+            color: #64748b;
+            opacity: 1;
+        }
+        .input-group input:-webkit-autofill,
+        .input-group input:-webkit-autofill:hover,
+        .input-group input:-webkit-autofill:focus,
+        .input-group input:-webkit-autofill:active {
+            -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+            box-shadow: 0 0 0 1000px #ffffff inset !important;
+            -webkit-text-fill-color: #0f172a !important;
+            caret-color: #0f172a;
+            border-color: #6366f1;
         }
         .ml-btn.primary.full {
             background: linear-gradient(135deg, #6366f1, #8b5cf6);

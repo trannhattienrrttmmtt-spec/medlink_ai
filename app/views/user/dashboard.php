@@ -161,16 +161,14 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
 }
 .ai-protein-ribbon {
     width: 100%;
-    max-width: 360px;
-    height: 110px;
+    max-width: 460px;
+    height: 210px;
     display: block;
     margin-top: 8px;
     border-radius: 14px;
-    border: 1px solid var(--line);
-    background:
-        radial-gradient(circle at 22% 24%, rgba(236,72,153,.18), transparent 28%),
-        radial-gradient(circle at 78% 30%, rgba(99,102,241,.16), transparent 26%),
-        var(--card);
+    border: 1px solid rgba(148,163,184,.28);
+    background: linear-gradient(180deg, #f8fafc, #eef6ff);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.72), 0 14px 30px rgba(15,23,42,.12);
 }
 .ai-structure-actions {
     display: flex;
@@ -316,6 +314,14 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
     font-weight: 900;
     min-width: 118px;
     cursor: pointer;
+}
+.global-dataset-control select option,
+.dataset-chart-toolbar select option,
+.full-network-toolbar select option,
+.ml-field select option,
+.search-box select option {
+    color: #f8fafc;
+    background: #111827;
 }
 .global-dataset-control i {
     color: var(--primary);
@@ -1283,22 +1289,136 @@ function proteinRibbonSvg(seedValue){
     const seq=String(seedValue||'');
     let seed=0;
     for(let i=0;i<seq.length;i++)seed=(seed+seq.charCodeAt(i)*(i+3))%9973;
-    const points=[];
-    for(let i=0;i<9;i++){
-        const x=12+i*34;
-        const y=55+Math.sin((i+seed%7)*1.05)*28;
-        points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    const palette=[
+        ['#2563eb','#0891b2','#0f766e','#7c3aed','#d97706'],
+        ['#1d4ed8','#0e7490','#047857','#9333ea','#ca8a04'],
+        ['#0369a1','#0f766e','#4f46e5','#be123c','#b45309'],
+        ['#334155','#2563eb','#059669','#7c3aed','#c2410c']
+    ][seed%4];
+    const gradId=`dashProteinClinicalGrad_${seed}`;
+    const shadowId=`dashProteinClinicalShadow_${seed}`;
+    const phase=(seed%23)*0.17;
+    const helix=[];
+    const helixBack=[];
+    for(let i=0;i<34;i++){
+        const x=26+i*8.1;
+        const base=60+Math.sin(i*.19+phase)*7;
+        helix.push(`${x.toFixed(1)},${(base+Math.sin(i*.9+phase)*15).toFixed(1)}`);
+        helixBack.push(`${x.toFixed(1)},${(base+Math.cos(i*.9+phase)*9).toFixed(1)}`);
     }
-    const circles=points.map((p,i)=>{
-        const [x,y]=p.split(',');
-        const color=i%3===0?'#ec4899':(i%3===1?'#6366f1':'#10b981');
-        return `<circle cx="${x}" cy="${y}" r="${i%2?5:7}" fill="${color}" opacity=".92"/>`;
-    }).join('');
-    return `<svg class="ai-protein-ribbon" viewBox="0 0 300 110" preserveAspectRatio="none">
-        <path d="M${points.join(' L')}" fill="none" stroke="#ec4899" stroke-width="8" stroke-linecap="round" opacity=".22"/>
-        <path d="M${points.join(' L')}" fill="none" stroke="#6366f1" stroke-width="3.2" stroke-linecap="round"/>
-        ${circles}
+    const lane=105+(seed%18);
+    const laneEnd=76+(seed%30);
+    const sheetA=[46+(seed%18),136-(seed%10),92+(seed%22),121-(seed%8),84+(seed%15),154-(seed%6)];
+    const sheetB=[125+(seed%20),42+(seed%13),172+(seed%18),34+(seed%8),158+(seed%18),66+(seed%9)];
+    const sheetC=[218-(seed%18),50+(seed%15),282-(seed%14),63+(seed%10),235-(seed%10),85+(seed%12)];
+    const tickX=262+(seed%22);
+    return `<svg class="ai-protein-ribbon" viewBox="0 0 320 180" preserveAspectRatio="none" aria-label="Protein secondary structure preview">
+        <defs>
+            <linearGradient id="${gradId}" x1="0" x2="1">
+                <stop offset="0%" stop-color="${palette[0]}"/>
+                <stop offset="48%" stop-color="${palette[1]}"/>
+                <stop offset="100%" stop-color="${palette[3]}"/>
+            </linearGradient>
+            <filter id="${shadowId}" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#64748b" flood-opacity=".20"/>
+            </filter>
+            <pattern id="dashProteinGrid_${seed}" width="22" height="22" patternUnits="userSpaceOnUse">
+                <path d="M22 0H0V22" fill="none" stroke="#dbeafe" stroke-width="1" opacity=".55"/>
+            </pattern>
+        </defs>
+        <rect x="0" y="0" width="320" height="180" rx="18" fill="#f8fafc"/>
+        <rect x="0" y="0" width="320" height="180" rx="18" fill="url(#dashProteinGrid_${seed})"/>
+        <circle cx="${72+(seed%36)}" cy="${45+(seed%18)}" r="${40+(seed%16)}" fill="#dbeafe" opacity=".55"/>
+        <circle cx="${235+(seed%28)}" cy="${118+(seed%18)}" r="${54+(seed%14)}" fill="#ccfbf1" opacity=".40"/>
+        <path d="M28 ${lane+9} C76 ${lane-30} 110 ${lane-26} 145 ${lane+2} S218 ${lane+42} 292 ${laneEnd+8}" fill="none" stroke="#cbd5e1" stroke-width="20" stroke-linecap="round" opacity=".72"/>
+        <path d="M28 ${lane} C76 ${lane-40} 110 ${lane-36} 145 ${lane-8} S218 ${lane+32} 292 ${laneEnd}" fill="none" stroke="url(#${gradId})" stroke-width="10" stroke-linecap="round" filter="url(#${shadowId})"/>
+        <polyline points="${helix.join(' ')}" fill="none" stroke="${palette[0]}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="${helixBack.join(' ')}" fill="none" stroke="${palette[1]}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity=".68"/>
+        <g opacity=".95" filter="url(#${shadowId})">
+            <polygon points="${sheetA.join(' ')}" fill="${palette[2]}"/>
+            <polygon points="${sheetB.join(' ')}" fill="${palette[4]}"/>
+            <polygon points="${sheetC.join(' ')}" fill="${palette[1]}"/>
+        </g>
+        <g fill="#ffffff" stroke="#64748b" stroke-width="1.3">
+            <circle cx="28" cy="${lane}" r="4.6"/><circle cx="145" cy="${lane-8}" r="4.6"/><circle cx="292" cy="${laneEnd}" r="4.6"/>
+        </g>
+        <g stroke="#94a3b8" stroke-width="1.2" opacity=".75">
+            <path d="M${tickX} 24v22M${tickX-11} 35h22"/>
+            <path d="M20 24h42M20 31h26"/>
+        </g>
+        <text x="18" y="160" fill="#475569" font-size="11" font-family="Plus Jakarta Sans, Arial" font-weight="800">SECONDARY STRUCTURE PREVIEW</text>
+        <text x="18" y="173" fill="#64748b" font-size="9" font-family="Plus Jakarta Sans, Arial" font-weight="700">Alpha helix / beta sheet / fold motif #${seed%1000}</text>
     </svg>`;
+}
+
+function svgDataUri(svg){
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+function networkNodeIcon(type){
+    const configs={
+        drug:{bg:'#6366f1',border:'#a5b4fc'},
+        disease:{bg:'#10b981',border:'#6ee7b7'},
+        protein:{bg:'#ec4899',border:'#f9a8d4'}
+    };
+    const cfg=configs[type]||{bg:'#8b5cf6',border:'#c4b5fd'};
+    let icon='';
+    if(type==='drug'){
+        icon=`<g transform="rotate(-38 32 32)">
+            <rect x="15" y="23" width="34" height="18" rx="9" fill="#ffffff"/>
+            <path d="M32 23v18" stroke="${cfg.bg}" stroke-width="3" stroke-linecap="round"/>
+            <path d="M18 32h28" stroke="#e0e7ff" stroke-width="1.5" opacity=".7"/>
+        </g>`;
+    }else if(type==='disease'){
+        icon=`<g fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round">
+            <circle cx="32" cy="32" r="10" fill="#ffffff" stroke="none"/>
+            <circle cx="32" cy="32" r="4" fill="${cfg.bg}" stroke="none"/>
+            <path d="M32 13v7M32 44v7M13 32h7M44 32h7M18.5 18.5l5 5M40.5 40.5l5 5M45.5 18.5l-5 5M23.5 40.5l-5 5"/>
+            <circle cx="22" cy="29" r="2" fill="${cfg.bg}" stroke="none"/>
+            <circle cx="39" cy="30" r="2" fill="${cfg.bg}" stroke="none"/>
+            <circle cx="32" cy="41" r="2" fill="${cfg.bg}" stroke="none"/>
+        </g>`;
+    }else{
+        icon=`<g fill="#ffffff" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 42C25 18 39 18 46 42" fill="none"/>
+            <path d="M19 29h26M22 38h20" opacity=".85"/>
+            <circle cx="18" cy="42" r="4"/>
+            <circle cx="32" cy="18" r="4"/>
+            <circle cx="46" cy="42" r="4"/>
+            <circle cx="25" cy="29" r="3"/>
+            <circle cx="39" cy="29" r="3"/>
+        </g>`;
+    }
+    return svgDataUri(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 64 64">
+        <defs>
+            <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+                <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="${cfg.bg}" flood-opacity=".42"/>
+            </filter>
+        </defs>
+        <circle cx="32" cy="32" r="27" fill="${cfg.bg}" stroke="${cfg.border}" stroke-width="4" filter="url(#glow)"/>
+        <circle cx="23" cy="21" r="7" fill="#ffffff" opacity=".18"/>
+        ${icon}
+    </svg>`);
+}
+
+function decorateNetworkNode(node){
+    const type=node.group||node.type||'node';
+    return {
+        ...node,
+        shape:'image',
+        image:networkNodeIcon(type),
+        size:type==='protein'?30:28,
+        borderWidth:0,
+        shadow:{enabled:true,color:'rgba(15,23,42,.35)',size:12,x:0,y:4},
+        font:{
+            size:16,
+            face:'Plus Jakarta Sans',
+            color:getComputedStyle(document.documentElement).getPropertyValue('--text').trim(),
+            strokeWidth:4,
+            strokeColor:getComputedStyle(document.documentElement).getPropertyValue('--card').trim(),
+            vadjust:8
+        }
+    };
 }
 
 function structureDetailHtml(node){
@@ -1331,7 +1451,6 @@ function structureDetailHtml(node){
             ${sequence?`<code class="smiles" style="display:block;margin-top:8px;max-height:70px;overflow:hidden;">${esc(sequence)}</code>`:''}
             <div class="ai-structure-actions">
                 ${proteinId&&!/^protein_/i.test(proteinId)?`<a href="https://alphafold.ebi.ac.uk/entry/${encodeURIComponent(proteinId)}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> AlphaFold 3D</a>`:''}
-                <a href="index.php?action=catalog&type=protein&dataset=${encodeURIComponent(currentDataset())}" target="_blank" rel="noopener"><i class="bi bi-list-ul"></i> Catalog protein</a>
             </div>
         </div>`;
     }
@@ -1388,6 +1507,18 @@ let datasetSummaryRows=[...datasetSummaryFallback];
 let datasetSummaryChartInst=null;
 let fullNetworkInst=null;
 function fmtNum(v){return Number(v||0).toLocaleString('en-US')}
+function datasetSummaryRow(dataset){
+    return datasetSummaryRows.find(r=>r.dataset===dataset)
+        || datasetSummaryFallback.find(r=>r.dataset===dataset)
+        || datasetSummaryFallback[0];
+}
+function updateDatasetStatCards(dataset=currentDataset()){
+    const row=datasetSummaryRow(dataset);
+    if(!row)return;
+    if($('sDrugs'))$('sDrugs').textContent=fmtNum(row.drugs);
+    if($('sDiseases'))$('sDiseases').textContent=fmtNum(row.diseases);
+    if($('sProteins'))$('sProteins').textContent=fmtNum(row.proteins);
+}
 function validDataset(v){
     return ['B-dataset','C-dataset','F-dataset'].includes(v);
 }
@@ -1422,6 +1553,7 @@ function refreshDatasetViews(reloadOptions=true){
     const dataset=currentDataset();
     localStorage.setItem('ml-dataset',dataset);
     if($('benchmarkDatasetLabel'))$('benchmarkDatasetLabel').textContent=dataset;
+    updateDatasetStatCards(dataset);
     renderDatasetSummaryChart(dataset);
     resetFullNetworkPrompt();
     if(reloadOptions)loadOpts();
@@ -1447,6 +1579,7 @@ function renderDatasetSummary(rows){
             setCurrentDataset(row.dataset.summaryDataset);
         };
     });
+    updateDatasetStatCards(currentDataset());
     renderDatasetSummaryChart(currentDataset());
 }
 function renderDatasetSummaryChart(datasetName){
@@ -1512,7 +1645,7 @@ async function loadFullDrugDiseaseNetwork(){
     try{
         const data=await get(`/dataset_drug_disease_network?dataset=${encodeURIComponent(dataset)}&relation=${encodeURIComponent(relation)}&model=${encodeURIComponent(model)}&limit=0`);
         if(!data.ok)throw new Error(data.error||'Không tải được graph');
-        const nodes=new vis.DataSet(data.nodes||[]);
+        const nodes=new vis.DataSet((data.nodes||[]).map(decorateNetworkNode));
         const edges=new vis.DataSet((data.edges||[]).map(e=>({
             ...e,
             smooth:{type:'dynamic'},
@@ -1531,9 +1664,9 @@ async function loadFullDrugDiseaseNetwork(){
                 shadow:false
             },
             groups:{
-                drug:{color:{background:'#6366f1',border:'#4338ca'},shape:'dot'},
-                disease:{color:{background:'#10b981',border:'#047857'},shape:'dot'},
-                protein:{color:{background:'#ec4899',border:'#be185d'},shape:'dot'}
+                drug:{shape:'image',image:networkNodeIcon('drug')},
+                disease:{shape:'image',image:networkNodeIcon('disease')},
+                protein:{shape:'image',image:networkNodeIcon('protein')}
             },
             physics:{
                 enabled:true,
@@ -1613,6 +1746,7 @@ async function loadOpts(){
     $('linkDrugs').href=`index.php?action=catalog&type=drug&dataset=${encodeURIComponent(ds)}`;
     $('linkDiseases').href=`index.php?action=catalog&type=disease&dataset=${encodeURIComponent(ds)}`;
     $('linkProteins').href=`index.php?action=catalog&type=protein&dataset=${encodeURIComponent(ds)}`;
+    updateDatasetStatCards(ds);
     $('pKeyword').innerHTML='<option value="">Đang tải dữ liệu...</option>';
     const ep=type==='drug'?'/drug_options':'/disease_options';
     try{
@@ -1620,16 +1754,16 @@ async function loadOpts(){
         const items=data.items||data.options||data.drugs||data.diseases||[];
         $('pKeyword').innerHTML='<option value="">-- Chọn hoạt chất --</option>'+items.map(i=>`<option value="${esc(i.name||i.id)}">${esc(i.name||i.id)}</option>`).join('');
         if(type==='drug'){
-            $('sDrugs').textContent=items.length;
+            $('sDrugs').textContent=fmtNum(items.length || datasetSummaryRow(ds).drugs);
             const d2=await get(`/disease_options?dataset=${encodeURIComponent(ds)}&limit=700`);
-            $('sDiseases').textContent=(d2.items||d2.options||d2.diseases||[]).length||'—';
+            $('sDiseases').textContent=fmtNum((d2.items||d2.options||d2.diseases||[]).length || datasetSummaryRow(ds).diseases);
         } else {
-            $('sDiseases').textContent=items.length;
+            $('sDiseases').textContent=fmtNum(items.length || datasetSummaryRow(ds).diseases);
             const d2=await get(`/drug_options?dataset=${encodeURIComponent(ds)}&limit=700`);
-            $('sDrugs').textContent=(d2.items||d2.options||d2.drugs||[]).length||'—';
+            $('sDrugs').textContent=fmtNum((d2.items||d2.options||d2.drugs||[]).length || datasetSummaryRow(ds).drugs);
         }
         // Load target proteins count
-        try{const pInfo=await get(`/protein_count?dataset=${encodeURIComponent(ds)}`);$('sProteins').textContent=pInfo.count||'—'}catch(e){$('sProteins').textContent='—'}
+        try{const pInfo=await get(`/protein_count?dataset=${encodeURIComponent(ds)}`);$('sProteins').textContent=fmtNum(pInfo.count || datasetSummaryRow(ds).proteins)}catch(e){$('sProteins').textContent=fmtNum(datasetSummaryRow(ds).proteins)}
         
         // Load symptoms based on generation dataset selection
         const dis=await get(`/disease_options?dataset=${encodeURIComponent(ds)}&limit=700`);
@@ -1646,7 +1780,11 @@ async function loadOpts(){
             const badge=fromOther?` <span style="font-size:10px;color:var(--amber); font-weight:700;">(ngoại lai)</span>`:'';
             return`<label style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:13px;transition:background 0.15s"><input type="checkbox" class="gsym-check" value="${esc(name)}" ${checked} style="accent-color:var(--primary);width:16px;height:16px;cursor:pointer"><span>${esc(name)}${badge}</span></label>`;
         }).join('');
-    }catch(e){console.error(e)}
+    }catch(e){
+        console.error(e);
+        updateDatasetStatCards(ds);
+        if($('pKeyword'))$('pKeyword').innerHTML='<option value="">Khong ket noi duoc AI API</option>';
+    }
 }
 
 // Render Result Table
