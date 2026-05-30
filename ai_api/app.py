@@ -171,6 +171,31 @@ def get_allnode_file(dataset):
     )
 
 
+def read_allnode_names(dataset):
+    allnode_file = get_allnode_file(dataset)
+    if not allnode_file or not Path(allnode_file).exists():
+        return []
+
+    names = []
+    encodings = ["utf-8-sig", "utf-8", "latin1"]
+    for enc in encodings:
+        try:
+            with open(allnode_file, "r", encoding=enc, newline="") as f:
+                for i, row in enumerate(csv.reader(f)):
+                    if not row:
+                        continue
+                    name = row[1].strip() if len(row) >= 2 else row[0].strip()
+                    if i == 0 and normalize_key(name) in {"id", "name", "node"}:
+                        continue
+                    if name:
+                        names.append(name)
+            return names
+        except Exception:
+            names = []
+
+    return names
+
+
 def get_model_drug_count(dataset):
     dpath = dataset_path(dataset)
     drug_feature_file = find_file_case_insensitive(dpath, ["Drug_mol2vec.csv", "DrugFingerprint.csv"])
@@ -317,13 +342,7 @@ def list_protein_candidates(dataset=DEFAULT_DATASET, limit=5000):
     with open(disease_feature_path, "r", encoding="utf-8-sig") as f:
         disease_count = sum(1 for _ in f)
 
-    all_nodes = []
-    with open(allnode_file, "r", encoding="utf-8-sig", newline="") as f:
-        for row in csv.reader(f):
-            if len(row) >= 2:
-                all_nodes.append(row[1].strip())
-            elif row:
-                all_nodes.append(row[0].strip())
+    all_nodes = read_allnode_names(dataset)
 
     proteins = []
     seen = set()
@@ -414,13 +433,7 @@ def get_ordered_disease_names(dataset=DEFAULT_DATASET):
 
     drug_count = get_model_drug_count(dataset)
     disease_count = count_csv_data_rows(disease_feature_path, has_header=False)
-    all_nodes = []
-    with open(allnode_file, "r", encoding="utf-8-sig", newline="") as f:
-        for row in csv.reader(f):
-            if len(row) >= 2:
-                all_nodes.append(row[1].strip())
-            elif row:
-                all_nodes.append(row[0].strip())
+    all_nodes = read_allnode_names(dataset)
     names = all_nodes[drug_count:drug_count + disease_count]
     return [name for name in names if name]
 
@@ -435,13 +448,7 @@ def get_ordered_protein_names(dataset=DEFAULT_DATASET):
 
     drug_count = get_model_drug_count(dataset)
     disease_count = count_csv_data_rows(disease_feature_path, has_header=False)
-    all_nodes = []
-    with open(allnode_file, "r", encoding="utf-8-sig", newline="") as f:
-        for row in csv.reader(f):
-            if len(row) >= 2:
-                all_nodes.append(row[1].strip())
-            elif row:
-                all_nodes.append(row[0].strip())
+    all_nodes = read_allnode_names(dataset)
     names = all_nodes[drug_count + disease_count:]
     return [name for name in names if name]
 
@@ -634,22 +641,7 @@ def list_disease_candidates(dataset=DEFAULT_DATASET, limit=1000):
     if not file_path or not Path(file_path).exists():
         return []
 
-    # Đọc tất cả nodes (file không có header)
-    import csv
-    all_nodes = []
-    encodings = ["utf-8-sig", "utf-8", "latin1"]
-    for enc in encodings:
-        try:
-            with open(file_path, "r", encoding=enc, newline="") as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if len(row) >= 2:
-                        all_nodes.append(row[1].strip())
-                    elif len(row) == 1:
-                        all_nodes.append(row[0].strip())
-            break
-        except Exception:
-            all_nodes = []
+    all_nodes = read_allnode_names(dataset)
 
     if not all_nodes:
         return []
@@ -1231,7 +1223,8 @@ def call_generator(target_disease, n, seed_smiles="", symptoms=None):
                         continue
 
     except Exception as e:
-        print("[GENERATOR WARNING]", e)
+        warning = str(e).encode("ascii", "backslashreplace").decode("ascii")
+        print("[GENERATOR WARNING]", warning)
 
     return fallback_generate_smiles(n)
 
@@ -1320,11 +1313,7 @@ def build_graph_data(input_type, keyword, dataset, current_results, original_res
                 with open(disease_feature, "r", encoding="utf-8-sig") as f:
                     disease_count = sum(1 for _ in f)
 
-            all_nodes_list = []
-            with open(allnode_file, "r", encoding="utf-8-sig") as f:
-                for row in csv.reader(f):
-                    if len(row) >= 2:
-                        all_nodes_list.append(row[1].strip())
+            all_nodes_list = read_allnode_names(dataset)
 
             protein_names = all_nodes_list[drug_count + disease_count:]
             protein_info = load_protein_info_rows(dataset)
@@ -1731,9 +1720,7 @@ def disease_options():
     q = normalize_key(request.args.get("q", ""))
     limit = safe_int(request.args.get("limit", 700), 700, 1, 5000)
 
-    print(f"[disease_options] dataset={dataset}, limit={limit}")
     items = list_disease_candidates(dataset, limit=5000)
-    print(f"[disease_options] found {len(items)} diseases")
 
     if q:
         items = [

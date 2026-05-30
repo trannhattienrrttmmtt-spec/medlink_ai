@@ -15,7 +15,7 @@ class PredictionController
         $history = [];
         try {
             $historyModel = new HistoryModel();
-            $history = $historyModel->recent($_SESSION['user_id'], 10);
+            $history = $historyModel->recent($_SESSION['user_id'], 50);
         } catch (Exception $e) {}
 
         include '../app/views/user/dashboard.php';
@@ -314,7 +314,7 @@ class PredictionController
             ], JSON_UNESCAPED_UNICODE);
 
             $historyModel = new HistoryModel();
-            $historyModel->add($_SESSION['user_id'], $input_type, $displayKeyword, $summary);
+            $historyModel->add($_SESSION['user_id'], $input_type, $displayKeyword, $dataset, $summary);
         } catch (Exception $e) {
         }
 
@@ -414,7 +414,7 @@ class PredictionController
 
         try {
             $historyModel = new HistoryModel();
-            $historyModel->add($_SESSION['user_id'], $input_type, $displayKeyword, $summary);
+            $historyModel->add($_SESSION['user_id'], $input_type, $displayKeyword, $dataset, $summary);
         } catch (Exception $e) {
         }
 
@@ -433,10 +433,14 @@ class PredictionController
         }
 
         $items = [];
+        $dataset = $_GET['dataset'] ?? '';
+        if (!in_array($dataset, ['B-dataset', 'C-dataset', 'F-dataset'], true)) {
+            $dataset = '';
+        }
 
         try {
             $historyModel = new HistoryModel();
-            $items = $historyModel->recent($_SESSION['user_id'], 50);
+            $items = $historyModel->recent($_SESSION['user_id'], 50, $dataset);
         } catch (Exception $e) {
             $items = [];
         }

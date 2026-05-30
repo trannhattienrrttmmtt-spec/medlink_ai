@@ -26,7 +26,6 @@ ai_api/AMDGT/checkpoints/
 ai_api/AMDGT/logs/
 
 # Dataset nếu quá nặng
-ai_api/AMDGT/data/
 
 # Node
 node_modules/

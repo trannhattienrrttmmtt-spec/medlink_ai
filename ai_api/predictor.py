@@ -426,6 +426,8 @@ class AMDGTPredictor:
             str(x).strip()
             for x in self._read_best_name_column(df_node)
         ]
+        if all_names and all_names[0].lower() in {"id", "name", "node"}:
+            all_names = all_names[1:]
 
         drug_num = self.args.drug_number
         disease_num = self.args.disease_number

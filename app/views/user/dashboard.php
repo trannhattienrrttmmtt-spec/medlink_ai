@@ -1164,7 +1164,8 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                         <div style="display:grid;grid-template-columns:1fr;gap:12px">
                             <div class="ml-field">
                                 <label>Tên bệnh lý chỉ định</label>
-                                <input id="gDisease" placeholder="VD: Novel Respiratory disease, Long COVID...">
+                                <input id="gDisease" list="gDiseaseOptions" placeholder="VD: Novel Respiratory disease, Long COVID...">
+                                <datalist id="gDiseaseOptions"></datalist>
                             </div>
                         </div>
                         <div class="ml-field">
@@ -1192,8 +1193,8 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                 <section class="ml-card">
                     <div class="section-title"><div class="icon"><i class="bi bi-lightning-charge-fill"></i></div><h3>Truy cập nhanh</h3></div>
                     <div style="display:flex;flex-direction:column;gap:12px">
-                        <a class="quick-action" href="#gen-section"><div class="qa-icon green"><i class="bi bi-magic"></i></div><div class="qa-text"><b>Sinh thuốc mới</b><small>Thiết kế cấu trúc phân tử tự động</small></div></a>
-                        <a class="quick-action" href="index.php?action=history"><div class="qa-icon amber"><i class="bi bi-clock-history"></i></div><div class="qa-text"><b>Xem lịch sử</b><small>Quản lý các kết quả nghiên cứu cũ</small></div></a>
+                        <a class="quick-action" id="quickGenerateLink" href="#gen-section"><div class="qa-icon green"><i class="bi bi-magic"></i></div><div class="qa-text"><b>Sinh thuốc mới</b><small>Thiết kế cấu trúc phân tử tự động</small></div></a>
+                        <a class="quick-action" id="quickHistoryLink" href="index.php?action=history"><div class="qa-icon amber"><i class="bi bi-clock-history"></i></div><div class="qa-text"><b>Xem lịch sử</b><small>Quản lý các kết quả nghiên cứu cũ</small></div></a>
                     </div>
                 </section>
 
@@ -1204,7 +1205,7 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                             <div class="icon" style="color:var(--amber); background:rgba(245,158,11,0.1)"><i class="bi bi-clock-history"></i></div>
                             <h3>Hoạt động gần đây</h3>
                         </div>
-                        <a class="ml-btn" href="index.php?action=history" style="padding: 6px 12px; font-size: 12px; border-radius: 8px;">Tất cả <i class="bi bi-arrow-right"></i></a>
+                        <a class="ml-btn" id="historyAllLink" href="index.php?action=history" style="padding: 6px 12px; font-size: 12px; border-radius: 8px;">Tất cả <i class="bi bi-arrow-right"></i></a>
                     </div>
                     <?php if (empty($history)): ?>
                         <div class="empty-state">
@@ -1213,9 +1214,9 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                             <small>Các truy vấn gần đây sẽ hiển thị tại đây.</small>
                         </div>
                     <?php else: ?>
-                        <div class="history-list">
-                        <?php foreach (array_slice($history, 0, 5) as $item): ?>
-                            <div class="history-item">
+                        <div class="history-list" id="recentHistoryList">
+                        <?php foreach ($history as $item): ?>
+                            <div class="history-item" data-history-dataset="<?= e($item['dataset'] ?? 'B-dataset') ?>">
                                 <div class="h-icon"><i class="bi bi-<?= ($item['input_type'] ?? '') === 'drug' ? 'capsule' : (($item['input_type'] ?? '') === 'disease_protein' ? 'dna' : 'activity') ?>"></i></div>
                                 <div class="h-text">
                                     <b><?= e($item['keyword'] ?? '') ?></b>
@@ -1224,6 +1225,11 @@ if (!function_exists('e')) { function e($v){ return htmlspecialchars((string)$v,
                                 <span class="h-time"><?= e(explode(' ', $item['created_at'] ?? '')[1] ?? ($item['created_at'] ?? '')) ?></span>
                             </div>
                         <?php endforeach; ?>
+                        </div>
+                        <div class="empty-state" id="recentHistoryEmpty" style="display:none">
+                            <div class="ico"><i class="bi bi-folder2-open"></i></div>
+                            <div>Chưa có hoạt động cho dataset này</div>
+                            <small>Các truy vấn của dataset đang chọn sẽ hiển thị tại đây.</small>
                         </div>
                     <?php endif; ?>
                 </section>
@@ -1506,7 +1512,28 @@ const datasetSummaryFallback=[
 let datasetSummaryRows=[...datasetSummaryFallback];
 let datasetSummaryChartInst=null;
 let fullNetworkInst=null;
+let lastGeneratorDataset='';
 function fmtNum(v){return Number(v||0).toLocaleString('en-US')}
+function positiveOrFallback(value, fallback){
+    const n=Number(value||0);
+    return n>0?n:fallback;
+}
+function normalizeSummaryRow(row){
+    const fb=datasetSummaryFallback.find(x=>x.dataset===(row?.dataset))||datasetSummaryFallback[0];
+    return {
+        dataset: row?.dataset || fb.dataset,
+        drugs: positiveOrFallback(row?.drugs, fb.drugs),
+        diseases: positiveOrFallback(row?.diseases, fb.diseases),
+        proteins: positiveOrFallback(row?.proteins, fb.proteins),
+        drug_disease_associations: positiveOrFallback(row?.drug_disease_associations, fb.drug_disease_associations),
+        drug_protein_associations: positiveOrFallback(row?.drug_protein_associations, fb.drug_protein_associations),
+        disease_protein_associations: positiveOrFallback(row?.disease_protein_associations, fb.disease_protein_associations),
+        sparsity: Number(row?.sparsity||0)>0?Number(row.sparsity):fb.sparsity
+    };
+}
+function normalizeSummaryRows(rows){
+    return datasetSummaryFallback.map(fb=>normalizeSummaryRow((rows||[]).find(r=>r.dataset===fb.dataset)||fb));
+}
 function datasetSummaryRow(dataset){
     return datasetSummaryRows.find(r=>r.dataset===dataset)
         || datasetSummaryFallback.find(r=>r.dataset===dataset)
@@ -1554,14 +1581,32 @@ function refreshDatasetViews(reloadOptions=true){
     localStorage.setItem('ml-dataset',dataset);
     if($('benchmarkDatasetLabel'))$('benchmarkDatasetLabel').textContent=dataset;
     updateDatasetStatCards(dataset);
+    syncDatasetScopedUi(dataset);
     renderDatasetSummaryChart(dataset);
     resetFullNetworkPrompt();
     if(reloadOptions)loadOpts();
 }
+function syncDatasetScopedUi(dataset=currentDataset()){
+    const historyUrl=`index.php?action=history&dataset=${encodeURIComponent(dataset)}`;
+    if($('quickHistoryLink'))$('quickHistoryLink').href=historyUrl;
+    if($('historyAllLink'))$('historyAllLink').href=historyUrl;
+    const items=[...document.querySelectorAll('[data-history-dataset]')];
+    if(items.length){
+        let visible=0;
+        items.forEach(item=>{
+            const show=(item.dataset.historyDataset||'B-dataset')===dataset;
+            const withinLimit=visible<5;
+            item.style.display=(show&&withinLimit)?'':'none';
+            if(show)visible++;
+        });
+        if($('recentHistoryEmpty'))$('recentHistoryEmpty').style.display=visible?'none':'';
+        if($('recentHistoryList'))$('recentHistoryList').style.display=visible?'':'none';
+    }
+}
 function renderDatasetSummary(rows){
     const body=$('datasetSummaryBody');
     if(!body)return;
-    datasetSummaryRows=(rows&&rows.length?rows:datasetSummaryFallback);
+    datasetSummaryRows=normalizeSummaryRows(rows&&rows.length?rows:datasetSummaryFallback);
     body.innerHTML=datasetSummaryRows.map(r=>`
         <tr data-summary-dataset="${esc(r.dataset)}">
             <td class="ds-name">${esc(r.dataset)}</td>
@@ -1743,10 +1788,18 @@ function skeleton(rows=3){return `<div style="display:flex;flex-direction:column
 // Load selection lists on load or change
 async function loadOpts(){
     const ds=currentDataset(),type=$('pType').value;
+    const generatorDatasetChanged=lastGeneratorDataset && lastGeneratorDataset!==ds;
+    if(generatorDatasetChanged){
+        if($('gDisease'))$('gDisease').value='';
+        if($('gSelectedTags'))$('gSelectedTags').innerHTML='<span style="font-size:12px;color:var(--text-dim)">Chưa chọn triệu chứng lâm sàng nào</span>';
+        if($('genResult'))$('genResult').innerHTML='';
+    }
+    lastGeneratorDataset=ds;
     $('linkDrugs').href=`index.php?action=catalog&type=drug&dataset=${encodeURIComponent(ds)}`;
     $('linkDiseases').href=`index.php?action=catalog&type=disease&dataset=${encodeURIComponent(ds)}`;
     $('linkProteins').href=`index.php?action=catalog&type=protein&dataset=${encodeURIComponent(ds)}`;
     updateDatasetStatCards(ds);
+    syncDatasetScopedUi(ds);
     $('pKeyword').innerHTML='<option value="">Đang tải dữ liệu...</option>';
     const ep=type==='drug'?'/drug_options':'/disease_options';
     try{
@@ -1765,21 +1818,25 @@ async function loadOpts(){
         // Load target proteins count
         try{const pInfo=await get(`/protein_count?dataset=${encodeURIComponent(ds)}`);$('sProteins').textContent=fmtNum(pInfo.count || datasetSummaryRow(ds).proteins)}catch(e){$('sProteins').textContent=fmtNum(datasetSummaryRow(ds).proteins)}
         
-        // Load symptoms based on generation dataset selection
+        // Load symptoms and disease suggestions based on generation dataset selection
         const dis=await get(`/disease_options?dataset=${encodeURIComponent(ds)}&limit=700`);
         const disList=dis.items||dis.options||dis.diseases||[];
+        if($('gDiseaseOptions')){
+            $('gDiseaseOptions').innerHTML=disList.map(d=>`<option value="${esc(d.name||d.id)}"></option>`).join('');
+        }
         
-        // Save current checked symptoms
-        const checkedBefore=new Set([...document.querySelectorAll('.gsym-check:checked')].map(c=>c.value));
-        const allNames=new Set([...checkedBefore,...disList.map(d=>d.name)]);
-        const sorted=[...allNames].sort();
+        // Keep checked symptoms only while staying on the same dataset.
+        const validDiseaseNames=new Set(disList.map(d=>d.name).filter(Boolean));
+        const checkedBefore=generatorDatasetChanged
+            ? new Set()
+            : new Set([...document.querySelectorAll('.gsym-check:checked')].map(c=>c.value).filter(v=>validDiseaseNames.has(v)));
+        const sorted=[...validDiseaseNames].sort();
         
         $('gSymptomsBox').innerHTML=sorted.map(name=>{
             const checked=checkedBefore.has(name)?'checked':'';
-            const fromOther=!disList.some(d=>d.name===name);
-            const badge=fromOther?` <span style="font-size:10px;color:var(--amber); font-weight:700;">(ngoại lai)</span>`:'';
-            return`<label style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:13px;transition:background 0.15s"><input type="checkbox" class="gsym-check" value="${esc(name)}" ${checked} style="accent-color:var(--primary);width:16px;height:16px;cursor:pointer"><span>${esc(name)}${badge}</span></label>`;
+            return`<label style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:13px;transition:background 0.15s"><input type="checkbox" class="gsym-check" value="${esc(name)}" ${checked} style="accent-color:var(--primary);width:16px;height:16px;cursor:pointer"><span>${esc(name)}</span></label>`;
         }).join('');
+        updateSymTags();
     }catch(e){
         console.error(e);
         updateDatasetStatCards(ds);
@@ -1984,6 +2041,7 @@ $('btnGenerate').onclick=async()=>{
             return;
         }
         const rows=data.results;
+        fetch('index.php?action=save_history&input_type=generate_drug&keyword='+encodeURIComponent(dis||symptoms.join(', '))+'&dataset='+encodeURIComponent(currentDataset())).catch(()=>{});
         $('genResult').innerHTML=`<div class="ml-alert success" style="margin-top: 15px;"><i class="bi bi-check-circle-fill"></i> Đã tạo thành công <b>${rows.length}</b> ứng viên hoạt chất cho bệnh lý: <b>${esc(dis||'triệu chứng lâm sàng')}</b>.</div>
         <table class="ai-table">
         <thead>

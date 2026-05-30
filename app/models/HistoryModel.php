@@ -28,16 +28,23 @@ class HistoryModel extends BaseModel
         }
     }
 
-    public function recent($userId, $limit = 10)
+    public function recent($userId, $limit = 10, $dataset = '')
     {
         $table = $this->getTable();
         if (!$table) return [];
         try {
             $userCol = $this->columnExists($table, 'user_id') ? 'user_id' : null;
+            $hasDataset = $dataset !== '' && $this->columnExists($table, 'dataset');
             $timeCol = $this->columnExists($table, 'created_at') ? 'created_at' : ($this->columnExists($table, 'time') ? 'time' : 'id');
-            if ($userCol) {
+            if ($userCol && $hasDataset) {
+                $stmt = $this->conn->prepare("SELECT * FROM `$table` WHERE `$userCol` = ? AND `dataset` = ? ORDER BY `$timeCol` DESC LIMIT " . (int)$limit);
+                $stmt->execute([$userId, $dataset]);
+            } elseif ($userCol) {
                 $stmt = $this->conn->prepare("SELECT * FROM `$table` WHERE `$userCol` = ? ORDER BY `$timeCol` DESC LIMIT " . (int)$limit);
                 $stmt->execute([$userId]);
+            } elseif ($hasDataset) {
+                $stmt = $this->conn->prepare("SELECT * FROM `$table` WHERE `dataset` = ? ORDER BY `$timeCol` DESC LIMIT " . (int)$limit);
+                $stmt->execute([$dataset]);
             } else {
                 $stmt = $this->conn->query("SELECT * FROM `$table` ORDER BY `$timeCol` DESC LIMIT " . (int)$limit);
             }
